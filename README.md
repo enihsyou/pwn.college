@@ -1,5 +1,5 @@
 # pwn.college
-My attempts to the pwn.college challenges
+My attempts to the [pwn.college challenges](https://pwn.college/dojos), these write‑ups serves as a memo documenting my thought process for solving challenge problems, sometimes including a PoC.
 
 The directory structure of the challenges keeps sync with [pwncollege/challenges](https://github.com/pwncollege/challenges).
 
