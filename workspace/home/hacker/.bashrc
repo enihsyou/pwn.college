@@ -47,8 +47,12 @@ function curlnc() {
     target_host="challenge.localhost"
     target_port="80"
     socket_path="/tmp/curlnc.sock"
-    (socat UNIX-LISTEN:"$socket_path" EXEC:"nc $target_host $target_port" &)
+    pid_file="/tmp/curlnc.pid"
+    (socat UNIX-LISTEN:"$socket_path",fork EXEC:"nc $target_host $target_port" &
+     echo $! > "$pid_file")
     curl -v --unix-socket "$socket_path" "http://$target_host${1:-/}" "${@:2}"
+    kill "$(cat "$pid_file")"
+    rm -f "$pid_file" "$socket_path"
 }
 
 export PATH="$PATH:./"
