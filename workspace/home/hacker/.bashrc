@@ -44,7 +44,7 @@ except tkinter.TclError:
 # Send request with nc but using curl syntax.
 # designed for 'Playing With Programs / Taking Web' section.
 function curlnc() {
-    curl -sv -o /dev/null -m 0.001 "http://challenge.localhost$@" 2>&1 | sed -n 's/^> //p' | tee /dev/tty | nc challenge.localhost 80
+    curl -s -o /dev/null -m 0.001 "http://challenge.localhost$@" --trace-ascii - | sed -nE 's/^[0-9a-f]+: //p' | tee /dev/tty | nc challenge.localhost 80
 }
 
 export PATH="$PATH:./"
