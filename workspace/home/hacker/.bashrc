@@ -16,6 +16,8 @@ fi
 # Define an alias for objdump with Intel syntax and colored jump visualization
 alias objdump='objdump -M intel --visualize-jumps=color --disassembler-color=terminal'
 
+alias ls='eza'
+
 # Get clipboard content from Desktop
 # The idea is that the current environment's /run/dojo/bin/python may not
 # include the tkinter module. However, running `find /nix/store -wholename "*/_tkinter*"`
@@ -38,3 +40,11 @@ except tkinter.TclError:
         print('Clipboard is empty or not accessible', file=sys.stderr)
 "
 }
+
+# Send request with nc but using curl syntax.
+# designed for 'Playing With Programs / Taking Web' section.
+function curlnc() {
+    curl -sv -o /dev/null -m 0.001 "http://challenge.localhost$@" 2>&1 | sed -n 's/^> //p' | tee /dev/tty | nc challenge.localhost 80
+}
+
+export PATH="$PATH:./"
