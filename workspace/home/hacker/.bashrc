@@ -44,7 +44,11 @@ except tkinter.TclError:
 # Send request with nc but using curl syntax.
 # designed for 'Playing With Programs / Taking Web' section.
 function curlnc() {
-    curl -s -o /dev/null -m 0.001 "http://challenge.localhost$@" --trace-ascii - | sed -nE 's/^[0-9a-f]+: //p' | tee /dev/tty | nc challenge.localhost 80
+    target_host="challenge.localhost"
+    target_port="80"
+    socket_path="/tmp/curlnc.sock"
+    (socat UNIX-LISTEN:"$socket_path" EXEC:"nc $target_host $target_port" &)
+    curl -v --unix-socket "$socket_path" "http://$target_host${1:-/}" "${@:2}"
 }
 
 export PATH="$PATH:./"
