@@ -5,7 +5,16 @@
 import threading
 import time
 
-from scapy.all import *
+from scapy.all import (
+    Raw,
+    conf,
+    get_if_hwaddr,
+    sendp,
+    sniff,
+)
+from scapy.layers.l2 import getmacbyip, Ether, ARP
+from scapy.layers.inet import IP, TCP
+
 
 # ---------------------------------------------------------
 # Network Configuration

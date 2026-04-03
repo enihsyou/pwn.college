@@ -1,0 +1,17 @@
+#!/usr/bin/expect -f
+set timeout 20
+
+spawn /challenge/run
+
+expect {
+    eof { exit }
+    -re "The key: (0x\[0-9a-fA-F\]+).*Encrypted secret: (0x\[0-9a-fA-F\]+)" {
+        set key_hex $expect_out(1,string)
+        set secret_hex $expect_out(2,string)
+        set result [expr $key_hex ^ $secret_hex]
+        set result_hex [format "%x" $result]
+        send "$result_hex\r"
+        exp_continue
+    }
+}
+interact
