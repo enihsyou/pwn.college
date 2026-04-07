@@ -15,46 +15,30 @@ def ctf():
     with log.progress('Recovering Flag') as progress:
         flag = b''
         guess_idx = 0
+        guess_len = 1
+        charset = [bytes([c]) for c in range(0x21, 0x7f)]
 
         while True:
-            pad_len = BLOCK_SIZE - 1 - (guess_idx % BLOCK_SIZE)
-            pad_data = b'A' * pad_len
+            pad_len = BLOCK_SIZE - (guess_idx % BLOCK_SIZE) - guess_len
+            pad_data = b'.' * pad_len
 
-            cipher_opt2 = send_data(b'2', pad_data)
+            target_cipher = send_data(b'2', pad_data)
+            target_start = (guess_idx // BLOCK_SIZE) * BLOCK_SIZE
+            target_block = target_cipher[target_start:target_start+BLOCK_SIZE]
 
-            target_block_idx = guess_idx // BLOCK_SIZE
-            start_idx = target_block_idx * BLOCK_SIZE
+            known_prefix = (pad_data + flag)[-BLOCK_SIZE+guess_len:]
+            guess_payload = b''.join(known_prefix + c for c in charset)
 
-            # Handle edge case: if start_idx is out of bounds, we've exhausted the ciphertext
-            if start_idx >= len(cipher_opt2):
-                break
-
-            target_block = cipher_opt2[start_idx: start_idx + BLOCK_SIZE]
-            known_prefix = (pad_data + flag)[-BLOCK_SIZE+1:]
-
-            found = False
-            for c in range(0x20, 0x80):
-                guess_char = bytes([c])
-                guess_payload = known_prefix + guess_char
-                if not guess_char.strip():
-                    # Program won't let us input whitespace character
-                    continue
-
-                cipher_opt1 = send_data(b'1', guess_payload)
-                guess_block = cipher_opt1[:BLOCK_SIZE]
-
-                if guess_block == target_block:
+            guess_cipher = send_data(b'1', guess_payload)
+            for i, guess_char in enumerate(charset):
+                char_start = i*BLOCK_SIZE
+                char_block = guess_cipher[char_start:char_start+BLOCK_SIZE]
+                if char_block == target_block:
                     flag += guess_char
-                    progress.status(f'Recovered so far: {flag.decode()}')
-                    found = True
+                    progress.status(flag.decode())
                     break
-
-            if not found:
-                log.error(f'Failed to recover byte at index {guess_idx}.')
-                break
-
-            if guess_char == b'}':
-                log.info("Reached end of flag format '}'. Terminating.")
+            else:
+                progress.success(f"Algorithm halts at index {guess_idx}")
                 break
 
             guess_idx += 1
