@@ -5,8 +5,8 @@ def ctf():
     p = process('/challenge/run')
     BLOCK_SIZE = 16
 
-    def send_data(choice: bytes, payload: bytes) -> bytes:
-        p.sendlineafter(b'Choice?', choice)
+    def send_data(payload: bytes) -> bytes:
+        p.sendlineafter(b'Choice?', b'2')
         p.sendlineafter(b'Data?', payload)
         result = p.recvline_contains(b'Result:').decode()
         result = result.split(':')[1].strip()
@@ -22,14 +22,14 @@ def ctf():
             pad_len = BLOCK_SIZE - (guess_idx % BLOCK_SIZE) - guess_len
             pad_data = b'.' * pad_len
 
-            target_cipher = send_data(b'2', pad_data)
+            target_cipher = send_data(pad_data)
             target_start = (guess_idx // BLOCK_SIZE) * BLOCK_SIZE
             target_block = target_cipher[target_start:target_start+BLOCK_SIZE]
 
             known_prefix = (pad_data + flag)[-BLOCK_SIZE+guess_len:]
             guess_payload = b''.join(known_prefix + c for c in charset)
 
-            guess_cipher = send_data(b'1', guess_payload)
+            guess_cipher = send_data(guess_payload)
             for i, guess_char in enumerate(charset):
                 char_start = i*BLOCK_SIZE
                 char_block = guess_cipher[char_start:char_start+BLOCK_SIZE]
