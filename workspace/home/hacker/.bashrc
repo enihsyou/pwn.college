@@ -5,16 +5,16 @@
 
 # Perform tasks normally done by `bash --login`, as defined in /etc/profile
 if [ -d /etc/profile.d ]; then
-  for i in /etc/profile.d/*.sh; do
-    if [ -r $i ]; then
-      . $i
-    fi
-  done
-  unset i
+    for i in /etc/profile.d/*.sh; do
+        if [ -r $i ]; then
+            . $i
+        fi
+    done
+    unset i
 fi
 
 # Define an alias for objdump with Intel syntax and colored jump visualization
-alias objdump='objdump -M intel --visualize-jumps=color --disassembler-color=terminal'
+alias objdump='objdump -M intel --visualize-jumps=color --disassembler-color=on --unicode=highlight'
 
 alias ls='eza'
 
@@ -48,8 +48,10 @@ function curlnc() {
     target_port="80"
     socket_path="/tmp/curlnc.sock"
     pid_file="/tmp/curlnc.pid"
-    (socat UNIX-LISTEN:"$socket_path",fork EXEC:"nc $target_host $target_port" &
-     echo $! > "$pid_file")
+    (
+        socat UNIX-LISTEN:"$socket_path",fork EXEC:"nc $target_host $target_port" &
+        echo $! >"$pid_file"
+    )
     curl -v --unix-socket "$socket_path" "http://$target_host${1:-/}" "${@:2}"
     kill "$(cat "$pid_file")"
     rm -f "$pid_file" "$socket_path"
