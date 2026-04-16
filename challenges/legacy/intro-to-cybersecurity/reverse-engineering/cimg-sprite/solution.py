@@ -15,6 +15,7 @@ def load_raw_input(source_path: str) -> bytes:
     # dump with two steps
     # objdump -t /challenge/cimg | grep desired_output
     # gdb -batch -ex "dump memory desired_output.bin 0x404020 (0x404020 + 0x6db2)" /challenge/cimg
+    # fold -b -w $((24 * 76)) desired_output.bin
     with open(source_path, 'rb') as f:
         return f.read()
 
@@ -93,7 +94,7 @@ def build_payload(raw_input: bytes) -> bytes:
         directive_patch_draw(frames, width-1, 0, 1, 1),
         directive_patch_draw(frames, width-1, height-1, 1, 1),
 
-        directive_define_sprite(frames, 23, 10, 6, 5, 0),  # c
+        directive_define_sprite(frames, 23, 10, 6, 4, 0),  # c
         directive_sprite_draw(0, *extract_rgb(frames, 23, 12), 23, 10),
         directive_define_sprite(frames, 30, 9, 5, 5, 1),  # I
         directive_sprite_draw(1, *extract_rgb(frames, 30, 10), 30, 9),

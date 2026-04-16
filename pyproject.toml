@@ -9,10 +9,10 @@ dependencies = [
     # which having trouble installing on Windows, so we force a 'broken' version
     # https://github.com/unicorn-engine/unicorn/issues/2245
     # https://github.com/unicorn-engine/unicorn/issues/2134
-    "pwntools>=4.14.1",
+    "pwntools==4.15.0",
     "pycryptodome>=3.23.0",
     "scapy>=2.7.0",
-    "unicorn>=2.1.4",
+    "unicorn==2.1.1",
 ]
 
 [tool.uv]
