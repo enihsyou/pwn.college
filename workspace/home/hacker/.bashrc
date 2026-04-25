@@ -57,4 +57,11 @@ function curlnc() {
     rm -f "$pid_file" "$socket_path"
 }
 
+# Spin up process with a stable, clean environment,
+# which is useful for finding stack address on ASLR-disabled program.
+function withenv() {
+    # create runtime.env with `env -0 > runtime.env`
+    (cat runtime.env; printf "%s\0" "$@") | xargs -0 env -i
+}
+
 export PATH="$PATH:./"
