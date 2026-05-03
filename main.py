@@ -58,11 +58,7 @@ class ChangeWatcher:
         return path.parent == self.args.entrypoint.parent
 
     def change_set_for(self, paths: set[Path]) -> ChangeSet:
-        changes = {}
-        for path in paths:
-            relative_path = project_relative(path)
-            changes[path] = local_to_remote(relative_path, self.args.remote_root)
-        return changes
+        return {path: local_to_remote(path, self.args.remote_root) for path in paths}
 
     def add(self, path: Path) -> None:
         with self.lock:
@@ -133,20 +129,6 @@ def tee[T: pwn.tube](process: T) -> T:
     return process
 
 
-def project_relative(path: Path) -> Path:
-    resolved = path.resolve()
-    try:
-        return resolved.relative_to(PROJECT_ROOT)
-    except ValueError as error:
-        raise ValueError(
-            f"{resolved} is outside project root {PROJECT_ROOT}"
-        ) from error
-
-
-def project_path(path: Path) -> Path:
-    return PROJECT_ROOT / path
-
-
 def parse_args() -> Args:
     parser = argparse.ArgumentParser(
         description="Upload a solve file to pwn.college, run it, and redeploy on changes."
@@ -170,8 +152,7 @@ def parse_args() -> Args:
         help="remote deployment directory",
     )
     namespace = parser.parse_args()
-    entrypoint: Path = namespace.entrypoint
-    assert project_relative(entrypoint)
+    entrypoint: Path = namespace.entrypoint.resolve()
     if not entrypoint.is_file():
         raise FileNotFoundError(entrypoint)
     return Args(entrypoint, namespace.recursive, namespace.directory)
@@ -199,10 +180,7 @@ def upload_files(ssh: pwn.ssh, changes: ChangeSet, watcher: ChangeWatcher) -> No
     if LOCAL_RUNNER in changes and watcher.args.remote_root.as_posix() != "/tmp":
         ssh.system(f"mkdir -p {shlex.quote(str(watcher.args.remote_root))}").wait()
     for local_path, remote_path in changes.items():
-        local_path = project_relative(
-            local_path
-        ).as_posix()  # to shirnk the path length in logs
-        ssh.upload(str(local_path), str(remote_path))
+        ssh.upload(str(local_path.as_posix()), str(remote_path))
     changes.clear()
 
 
