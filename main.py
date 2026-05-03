@@ -6,17 +6,10 @@ from pathlib import Path, PurePosixPath
 from threading import Event, Lock
 
 import pwn
-from watchdog.events import (
-    FileModifiedEvent,
-    FileSystemEvent,
-    FileSystemEventHandler,
-)
+from watchdog.events import FileModifiedEvent, FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 ChangeSet = dict[Path, PurePosixPath]
-
-PROJECT_ROOT = Path(__file__).resolve().parent
-LOCAL_RUNNER = Path("dojo.py")
 
 REMOTE_EXITED = object()
 REDEPLOY_REQUESTED = object()
@@ -25,12 +18,26 @@ USER_STOPPED = object()
 
 @dataclass(frozen=True)
 class Args:
+    """Deployment configuration and runtime arguments."""
+
     entrypoint: Path
     include_siblings: bool
     remote_root: PurePosixPath
 
 
+@dataclass(frozen=True)
+class Repr:
+    """Returns the literal string value in its repr for remote evaluation."""
+
+    value: str
+
+    def __repr__(self) -> str:
+        return self.value
+
+
 class ChangeWatcher:
+    """Monitors file changes and manages pending deployment updates."""
+
     args: Args
     changed: set[Path]
     notified: Event
@@ -45,12 +52,14 @@ class ChangeWatcher:
         self.mtime = dict()
 
     def watched_files(self) -> set[Path]:
+        """Gets the set of local files currently being monitored."""
         if not self.args.include_siblings:
             return {self.args.entrypoint}
         directory = self.args.entrypoint.parent
         return {path.resolve() for path in directory.iterdir() if path.is_file()}
 
     def is_watched_file(self, path: Path) -> bool:
+        """Determines if a given path is within the monitored scope."""
         if not path.is_file():
             return False
         if not self.args.include_siblings:
@@ -58,9 +67,11 @@ class ChangeWatcher:
         return path.parent == self.args.entrypoint.parent
 
     def change_set_for(self, paths: set[Path]) -> ChangeSet:
+        """Maps local paths to their remote deployment targets."""
         return {path: local_to_remote(path, self.args.remote_root) for path in paths}
 
     def add(self, path: Path) -> None:
+        """Adds a path to the pending change set if it has been modified."""
         with self.lock:
             if path in self.changed:
                 return
@@ -72,6 +83,7 @@ class ChangeWatcher:
             self.notified.set()
 
     def drain(self) -> ChangeSet:
+        """Collects and clears all pending file changes."""
         with self.lock:
             pending = set(self.changed)
             self.changed.clear()
@@ -79,12 +91,14 @@ class ChangeWatcher:
         return self.change_set_for(pending)
 
     def wait(self) -> ChangeSet:
+        """Blocks until a change is detected and returns the pending set."""
         self.notified.wait()
         return self.drain()
 
 
 @contextmanager
 def watch_changes(args: Args):
+    """Sets up a file system observer to notify the watcher of modifications."""
     watcher = ChangeWatcher(args)
 
     class Handler(FileSystemEventHandler):
@@ -107,6 +121,7 @@ def watch_changes(args: Args):
 
 
 def tee[T: pwn.tube](process: T) -> T:
+    """Mirrors a pwntools tube's I/O to the local system stdout."""
     import sys
 
     orig_send_raw = process.send_raw
@@ -159,25 +174,15 @@ def parse_args() -> Args:
 
 
 def local_to_remote(path: Path, remote_root: PurePosixPath) -> PurePosixPath:
+    """Resolves the remote destination path for a given local file."""
     return remote_root / PurePosixPath(path.name)
 
 
-def validate_supported_file(path: Path) -> None:
-    if path.suffix == ".py":
-        return
-    raise NotImplementedError(f"Unsupported file type: {path.suffix or path.name}")
-
-
-def initial_change_set(watcher: ChangeWatcher) -> ChangeSet:
-    changes = watcher.change_set_for(watcher.watched_files())
-    changes[LOCAL_RUNNER] = local_to_remote(LOCAL_RUNNER, watcher.args.remote_root)
-    return changes
-
-
 def upload_files(ssh: pwn.ssh, changes: ChangeSet, watcher: ChangeWatcher) -> None:
+    """Uploads the specified set of files to the remote environment."""
     if not changes:
         return
-    if LOCAL_RUNNER in changes and watcher.args.remote_root.as_posix() != "/tmp":
+    if watcher.args.remote_root.as_posix() != "/tmp":
         ssh.system(f"mkdir -p {shlex.quote(str(watcher.args.remote_root))}").wait()
     for local_path, remote_path in changes.items():
         ssh.upload(str(local_path.as_posix()), str(remote_path))
@@ -185,20 +190,50 @@ def upload_files(ssh: pwn.ssh, changes: ChangeSet, watcher: ChangeWatcher) -> No
 
 
 def interrupt_remote(ssh: pwn.ssh, io: pwn.tubes.ssh.ssh_process) -> None:
+    """Forcibly terminates the currently running remote process."""
     process_alive = io.sock is not None
     if process_alive and io.pid:
         # io.kill() won't kill the process, we have to do it manually
         ssh.system(f"kill -9 {io.pid}").wait()
 
 
+def on_dojo(argv: list[bytes]) -> None:
+    """Detects and resolves the challenge executable path on the remote host."""
+    from pathlib import Path
+    import os
+    import stat
+
+    def find_challenge(search_path="/challenge"):
+        xs = [
+            bytes(f.absolute())
+            for f in Path(search_path).iterdir()
+            if f.is_file()
+            and os.access(f, os.X_OK)
+            and (f.stat().st_mode & stat.S_ISUID)
+        ]
+        if not xs:
+            raise FileNotFoundError(f"No executable found in {search_path}")
+        if len(xs) > 1:
+            raise FileNotFoundError(f"Multiple executables found in {search_path}")
+        return xs[0]
+
+    for i, arg in enumerate(argv):
+        if arg == b"DOJO_ARGS_CHALLENGE":
+            argv[i] = find_challenge()
+
+
 def remote_command(watcher: ChangeWatcher) -> list[str]:
-    return [
-        "/run/dojo/bin/python3",
-        str(local_to_remote(LOCAL_RUNNER, watcher.args.remote_root)),
-        str(local_to_remote(watcher.args.entrypoint, watcher.args.remote_root)),
-        "-d",
-        str(watcher.args.remote_root),
-    ]
+    """Builds the shell command for executing the entrypoint on the remote."""
+
+    ep = watcher.args.entrypoint
+    if ep.suffix == ".py":
+        return [
+            "/run/dojo/bin/python3",
+            str(local_to_remote(ep, watcher.args.remote_root)),
+            "DOJO_ARGS_CHALLENGE",  # real argv[1] for ep will be injected by on_dojo at preexec stage.
+        ]
+
+    raise NotImplementedError(f"Unsupported file type: {ep.suffix or ep.name}")
 
 
 def run_remote_until_change(
@@ -206,9 +241,20 @@ def run_remote_until_change(
     watcher: ChangeWatcher,
     changeset: ChangeSet,
 ) -> object:
+    """Executes the remote command and monitors for local file changes."""
     argv = remote_command(watcher)
     io: pwn.tubes.ssh.ssh_process
-    with tee(ssh.process(argv, executable=argv[0], aslr=True)) as io:  # type: ignore
+
+    with tee(
+        ssh.process(
+            argv,
+            executable=argv[0],
+            cwd=str(watcher.args.remote_root),
+            aslr=True,
+            preexec_fn=on_dojo,
+            preexec_args=(Repr("argv"),),
+        )
+    ) as io:  # type: ignore
         try:
             while True:
                 io.recv(timeout=3)  # type: ignore
@@ -225,6 +271,7 @@ def run_remote_until_change(
 
 
 def wait_for_redeploy(watcher: ChangeWatcher, changeset: ChangeSet) -> object:
+    """Wait for a local change when no remote process is active."""
     try:
         changeset.update(watcher.wait())
         pwn.info("Local change detected, redeploying...")
@@ -234,7 +281,8 @@ def wait_for_redeploy(watcher: ChangeWatcher, changeset: ChangeSet) -> object:
 
 
 def deploy_loop(watcher: ChangeWatcher) -> None:
-    changeset = initial_change_set(watcher)
+    """Orchestrates the continuous upload, execution, and redeploy cycle."""
+    changeset = watcher.change_set_for(watcher.watched_files())
     with pwn.ssh(user="hacker", host="dojo.pwn.college", raw=True) as ssh:
         while True:
             upload_files(ssh, changeset, watcher)
@@ -249,7 +297,6 @@ def deploy_loop(watcher: ChangeWatcher) -> None:
 
 def main() -> None:
     args = parse_args()
-    validate_supported_file(args.entrypoint)
     with watch_changes(args) as watcher:
         deploy_loop(watcher)
 
