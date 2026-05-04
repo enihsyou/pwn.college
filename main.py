@@ -25,16 +25,6 @@ class Args:
     remote_root: PurePosixPath
 
 
-@dataclass(frozen=True)
-class Repr:
-    """Returns the literal string value in its repr for remote evaluation."""
-
-    value: str
-
-    def __repr__(self) -> str:
-        return self.value
-
-
 class ChangeWatcher:
     """Monitors file changes and manages pending deployment updates."""
 
@@ -197,31 +187,6 @@ def interrupt_remote(ssh: pwn.ssh, io: pwn.tubes.ssh.ssh_process) -> None:
         ssh.system(f"kill -9 {io.pid}").wait()
 
 
-def on_dojo(argv: list[bytes]) -> None:
-    """Detects and resolves the challenge executable path on the remote host."""
-    from pathlib import Path
-    import os
-    import stat
-
-    def find_challenge(search_path="/challenge"):
-        xs = [
-            bytes(f.absolute())
-            for f in Path(search_path).iterdir()
-            if f.is_file()
-            and os.access(f, os.X_OK)
-            and (f.stat().st_mode & stat.S_ISUID)
-        ]
-        if not xs:
-            raise FileNotFoundError(f"No executable found in {search_path}")
-        if len(xs) > 1:
-            raise FileNotFoundError(f"Multiple executables found in {search_path}")
-        return xs[0]
-
-    for i, arg in enumerate(argv):
-        if arg == b"DOJO_ARGS_CHALLENGE":
-            argv[i] = find_challenge()
-
-
 def remote_command(watcher: ChangeWatcher) -> list[str]:
     """Builds the shell command for executing the entrypoint on the remote."""
 
@@ -230,7 +195,6 @@ def remote_command(watcher: ChangeWatcher) -> list[str]:
         return [
             "/run/dojo/bin/python3",
             str(local_to_remote(ep, watcher.args.remote_root)),
-            "DOJO_ARGS_CHALLENGE",  # real argv[1] for ep will be injected by on_dojo at preexec stage.
         ]
 
     raise NotImplementedError(f"Unsupported file type: {ep.suffix or ep.name}")
@@ -243,18 +207,10 @@ def run_remote_until_change(
 ) -> object:
     """Executes the remote command and monitors for local file changes."""
     argv = remote_command(watcher)
+    cwd = str(watcher.args.remote_root)
     io: pwn.tubes.ssh.ssh_process
 
-    with tee(
-        ssh.process(
-            argv,
-            executable=argv[0],
-            cwd=str(watcher.args.remote_root),
-            aslr=True,
-            preexec_fn=on_dojo,
-            preexec_args=(Repr("argv"),),
-        )
-    ) as io:  # type: ignore
+    with tee(ssh.process(argv, argv[0], cwd=cwd, aslr=True)) as io:  # type: ignore
         try:
             while True:
                 io.recv(timeout=3)  # type: ignore
