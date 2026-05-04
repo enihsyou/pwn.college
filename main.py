@@ -28,18 +28,12 @@ class Args:
 class ChangeWatcher:
     """Monitors file changes and manages pending deployment updates."""
 
-    args: Args
-    changed: set[Path]
-    notified: Event
-    lock: Lock
-    mtime: dict[Path, int]
-
     def __init__(self, args: Args) -> None:
         self.args = args
-        self.changed = set()
+        self.pending = self.change_set_for(self.watched_files())
         self.notified = Event()
         self.lock = Lock()
-        self.mtime = dict()
+        self.mtime: dict[Path, int] = dict()
 
     def watched_files(self) -> set[Path]:
         """Gets the set of local files currently being monitored."""
@@ -63,27 +57,32 @@ class ChangeWatcher:
     def add(self, path: Path) -> None:
         """Adds a path to the pending change set if it has been modified."""
         with self.lock:
-            if path in self.changed:
+            if path in self.pending:
                 return
             mtime = path.stat().st_mtime_ns
             if path in self.mtime and self.mtime[path] == mtime:
                 return
             self.mtime[path] = mtime
-            self.changed.add(path)
+            self.pending[path] = local_to_remote(path, self.args.remote_root)
             self.notified.set()
 
-    def drain(self) -> ChangeSet:
+    def has_pending(self) -> bool:
+        """Returns whether there are files waiting to be uploaded."""
+        return bool(self.pending)
+
+    def take_pending(self) -> ChangeSet:
         """Collects and clears all pending file changes."""
         with self.lock:
-            pending = set(self.changed)
-            self.changed.clear()
+            if not self.pending:
+                return {}
+            pending = dict(self.pending)
+            self.pending.clear()
             self.notified.clear()
-        return self.change_set_for(pending)
+            return pending
 
-    def wait(self) -> ChangeSet:
-        """Blocks until a change is detected and returns the pending set."""
+    def wait(self) -> None:
+        """Blocks until a change is detected."""
         self.notified.wait()
-        return self.drain()
 
 
 @contextmanager
@@ -168,15 +167,15 @@ def local_to_remote(path: Path, remote_root: PurePosixPath) -> PurePosixPath:
     return remote_root / PurePosixPath(path.name)
 
 
-def upload_files(ssh: pwn.ssh, changes: ChangeSet, watcher: ChangeWatcher) -> None:
+def upload_files(ssh: pwn.ssh, args: Args, watcher: ChangeWatcher) -> None:
     """Uploads the specified set of files to the remote environment."""
+    changes = watcher.take_pending()
     if not changes:
         return
-    if watcher.args.remote_root.as_posix() != "/tmp":
-        ssh.system(f"mkdir -p {shlex.quote(str(watcher.args.remote_root))}").wait()
+    if args.remote_root.as_posix() != "/tmp":
+        ssh.system(f"mkdir -p {shlex.quote(str(args.remote_root))}").wait()
     for local_path, remote_path in changes.items():
         ssh.upload(str(local_path.as_posix()), str(remote_path))
-    changes.clear()
 
 
 def interrupt_remote(ssh: pwn.ssh, io: pwn.tubes.ssh.ssh_process) -> None:
@@ -184,38 +183,35 @@ def interrupt_remote(ssh: pwn.ssh, io: pwn.tubes.ssh.ssh_process) -> None:
     process_alive = io.sock is not None
     if process_alive and io.pid:
         # io.kill() won't kill the process, we have to do it manually
-        ssh.system(f"kill -9 {io.pid}").wait()
+        ssh.system(f"kill -TERM {io.pid}").wait()
 
 
-def remote_command(watcher: ChangeWatcher) -> list[str]:
+def remote_command(args: Args) -> list[str]:
     """Builds the shell command for executing the entrypoint on the remote."""
 
-    ep = watcher.args.entrypoint
+    ep = args.entrypoint
+    rf = str(local_to_remote(ep, args.remote_root))
     if ep.suffix == ".py":
-        return [
-            "/run/dojo/bin/python3",
-            str(local_to_remote(ep, watcher.args.remote_root)),
-        ]
+        return ["/run/dojo/bin/python3", rf]
 
     raise NotImplementedError(f"Unsupported file type: {ep.suffix or ep.name}")
 
 
 def run_remote_until_change(
     ssh: pwn.ssh,
+    args: Args,
     watcher: ChangeWatcher,
-    changeset: ChangeSet,
 ) -> object:
     """Executes the remote command and monitors for local file changes."""
-    argv = remote_command(watcher)
-    cwd = str(watcher.args.remote_root)
+    argv = remote_command(args)
+    cwd = str(args.remote_root)
     io: pwn.tubes.ssh.ssh_process
 
     with tee(ssh.process(argv, argv[0], cwd=cwd, aslr=True)) as io:  # type: ignore
         try:
             while True:
                 io.recv(timeout=3)  # type: ignore
-                changeset.update(watcher.drain())
-                if changeset:
+                if watcher.has_pending():
                     pwn.info("Local change detected, kill and redeploying...")
                     interrupt_remote(ssh, io)
                     return REDEPLOY_REQUESTED
@@ -226,35 +222,34 @@ def run_remote_until_change(
             return USER_STOPPED
 
 
-def wait_for_redeploy(watcher: ChangeWatcher, changeset: ChangeSet) -> object:
+def wait_for_redeploy(watcher: ChangeWatcher) -> object:
     """Wait for a local change when no remote process is active."""
     try:
-        changeset.update(watcher.wait())
+        watcher.wait()
         pwn.info("Local change detected, redeploying...")
         return REDEPLOY_REQUESTED
     except KeyboardInterrupt:
         return USER_STOPPED
 
 
-def deploy_loop(watcher: ChangeWatcher) -> None:
+def deploy_loop(args: Args, watcher: ChangeWatcher) -> None:
     """Orchestrates the continuous upload, execution, and redeploy cycle."""
-    changeset = watcher.change_set_for(watcher.watched_files())
     with pwn.ssh(user="hacker", host="dojo.pwn.college", raw=True) as ssh:
         while True:
-            upload_files(ssh, changeset, watcher)
-            result = run_remote_until_change(ssh, watcher, changeset)
+            upload_files(ssh, args, watcher)
+            result = run_remote_until_change(ssh, args, watcher)
             if result is USER_STOPPED:
                 return
             if result is REDEPLOY_REQUESTED:
                 continue
-            if wait_for_redeploy(watcher, changeset) is USER_STOPPED:
+            if wait_for_redeploy(watcher) is USER_STOPPED:
                 return
 
 
 def main() -> None:
     args = parse_args()
     with watch_changes(args) as watcher:
-        deploy_loop(watcher)
+        deploy_loop(args, watcher)
 
 
 if __name__ == "__main__":
