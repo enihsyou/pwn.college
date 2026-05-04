@@ -24,23 +24,26 @@ class Args:
     include_siblings: bool
     remote_root: PurePosixPath
 
+    def watched_files(self) -> set[Path]:
+        """Determines the set of local files to monitor based on the configuration."""
+        if not self.include_siblings:
+            return {self.entrypoint}
+        directory = self.entrypoint.parent
+        return {path.resolve() for path in directory.iterdir() if path.is_file()}
+
 
 class ChangeWatcher:
     """Monitors file changes and manages pending deployment updates."""
 
     def __init__(self, args: Args) -> None:
         self.args = args
-        self.pending = self.change_set_for(self.watched_files())
+        self.pending = {
+            path: local_to_remote(path, args.remote_root)
+            for path in args.watched_files()
+        }
         self.notified = Event()
         self.lock = Lock()
         self.mtime: dict[Path, int] = dict()
-
-    def watched_files(self) -> set[Path]:
-        """Gets the set of local files currently being monitored."""
-        if not self.args.include_siblings:
-            return {self.args.entrypoint}
-        directory = self.args.entrypoint.parent
-        return {path.resolve() for path in directory.iterdir() if path.is_file()}
 
     def is_watched_file(self, path: Path) -> bool:
         """Determines if a given path is within the monitored scope."""
@@ -49,10 +52,6 @@ class ChangeWatcher:
         if not self.args.include_siblings:
             return path == self.args.entrypoint
         return path.parent == self.args.entrypoint.parent
-
-    def change_set_for(self, paths: set[Path]) -> ChangeSet:
-        """Maps local paths to their remote deployment targets."""
-        return {path: local_to_remote(path, self.args.remote_root) for path in paths}
 
     def add(self, path: Path) -> None:
         """Adds a path to the pending change set if it has been modified."""
@@ -72,9 +71,9 @@ class ChangeWatcher:
 
     def take_pending(self) -> ChangeSet:
         """Collects and clears all pending file changes."""
+        if not self.has_pending():
+            return {}
         with self.lock:
-            if not self.pending:
-                return {}
             pending = dict(self.pending)
             self.pending.clear()
             self.notified.clear()
@@ -188,7 +187,6 @@ def interrupt_remote(ssh: pwn.ssh, io: pwn.tubes.ssh.ssh_process) -> None:
 
 def remote_command(args: Args) -> list[str]:
     """Builds the shell command for executing the entrypoint on the remote."""
-
     ep = args.entrypoint
     rf = str(local_to_remote(ep, args.remote_root))
     if ep.suffix == ".py":
