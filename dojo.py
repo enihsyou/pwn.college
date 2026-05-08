@@ -23,6 +23,7 @@ class Args:
     entrypoint: Path
     include_siblings: bool
     remote_root: PurePosixPath
+    arguments: tuple[str, ...] = ()
 
     def watched_files(self) -> set[Path]:
         """Determines the set of local files to monitor based on the configuration."""
@@ -154,11 +155,18 @@ def parse_args() -> Args:
         default="/tmp",
         help="remote deployment directory",
     )
+    parser.add_argument(
+        "args",
+        nargs=argparse.REMAINDER,
+        help="arguments to pass to the remote script",
+    )
     namespace = parser.parse_args()
     entrypoint: Path = namespace.entrypoint.resolve()
     if not entrypoint.is_file():
         raise FileNotFoundError(entrypoint)
-    return Args(entrypoint, namespace.recursive, namespace.directory)
+    return Args(
+        entrypoint, namespace.recursive, namespace.directory, tuple(namespace.args)
+    )
 
 
 def local_to_remote(path: Path, remote_root: PurePosixPath) -> PurePosixPath:
@@ -190,7 +198,7 @@ def remote_command(args: Args) -> list[str]:
     ep = args.entrypoint
     rf = str(local_to_remote(ep, args.remote_root))
     if ep.suffix == ".py":
-        return ["/run/dojo/bin/python3", rf]
+        return ["/run/dojo/bin/python3", rf, *args.arguments]
 
     raise NotImplementedError(f"Unsupported file type: {ep.suffix or ep.name}")
 
