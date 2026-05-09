@@ -174,15 +174,27 @@ def local_to_remote(path: Path, remote_root: PurePosixPath) -> PurePosixPath:
     return remote_root / PurePosixPath(path.name)
 
 
-def upload_files(ssh: pwn.ssh, args: Args, watcher: ChangeWatcher) -> None:
-    """Uploads the specified set of files to the remote environment."""
-    changes = watcher.take_pending()
-    if not changes:
-        return
+def file_uploader(ssh: pwn.ssh, args: Args):
+
     if args.remote_root.as_posix() != "/tmp":
         ssh.system(f"mkdir -p {shlex.quote(str(args.remote_root))}").wait()
-    for local_path, remote_path in changes.items():
-        ssh.upload(str(local_path.as_posix()), str(remote_path))
+
+    # when file is 'touch'ed without modification, skip upload and only restart
+    md5set: dict[Path, bytes] = dict()
+
+    def upload_files(watcher: ChangeWatcher) -> None:
+        """Uploads the specified set of files to the remote environment."""
+        changes = watcher.take_pending()
+        if not changes:
+            return
+        for local_path, remote_path in changes.items():
+            md5 = pwn.hashlib.md5(local_path.read_bytes()).digest()
+            if local_path in md5set and md5set[local_path] == md5:
+                continue
+            md5set[local_path] = md5
+            ssh.upload(str(local_path.as_posix()), str(remote_path))
+
+    return upload_files
 
 
 def interrupt_remote(ssh: pwn.ssh, io: pwn.tubes.ssh.ssh_process) -> None:
@@ -241,8 +253,9 @@ def wait_for_redeploy(watcher: ChangeWatcher) -> object:
 def deploy_loop(args: Args, watcher: ChangeWatcher) -> None:
     """Orchestrates the continuous upload, execution, and redeploy cycle."""
     with pwn.ssh(user="hacker", host="dojo.pwn.college", raw=True) as ssh:
+        upload_files = file_uploader(ssh, args)
         while True:
-            upload_files(ssh, args, watcher)
+            upload_files(watcher)
             result = run_remote_until_change(ssh, args, watcher)
             if result is USER_STOPPED:
                 return
