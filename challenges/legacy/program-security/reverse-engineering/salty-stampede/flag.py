@@ -4,6 +4,7 @@ import hashlib
 import itertools
 import re
 import sys
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 from struct import Struct
@@ -32,26 +33,29 @@ class RoundData:
     attempts: int
     length: int
     secret_number: int
+    salt: bytes = b""
     requirements: tuple[AttemptRequirement, ...] = ()
     requirement_hashes: tuple[bytes, ...] = ()
 
 
-class GameVersion:
+class GameVersion(ABC):
+    @abstractmethod
     def parse_rounds(self, game_data: CowGameData, raw_data: bytes) -> list[RoundData]:
         raise NotImplementedError
 
+    @abstractmethod
     def solve_round(self, io: pwn.tube, round_data: RoundData):
         raise NotImplementedError
 
-    def _format_secret_number(self, round_data: RoundData) -> str:
+    def format_secret_number(self, round_data: RoundData) -> str:
         return f"{round_data.secret_number:0{round_data.length}d}"
 
-    def _iter_valid_guesses(self, length: int):
+    def iter_valid_guesses(self, length: int):
         for digits in itertools.permutations("1234567890", length):
             if digits[0] != "0":
                 yield "".join(digits)
 
-    def _score_guess(self, answer: str, guess: str) -> AttemptRequirement:
+    def score_guess(self, answer: str, guess: str) -> AttemptRequirement:
         bulls = sum(answer_digit == guess_digit for answer_digit, guess_digit in zip(answer, guess))
         matching_digits = sum(
             min(answer.count(str(digit)), guess.count(str(digit))) for digit in range(10)
@@ -83,7 +87,7 @@ class GameVersion1(GameVersion):
         ]
 
     def solve_round(self, io: pwn.tube, round_data: RoundData):
-        answer = self._format_secret_number(round_data)
+        answer = self.format_secret_number(round_data)
         wrong_guess = self._choose_wrong_guess(answer)
 
         for _ in range(round_data.attempts - 1):
@@ -91,25 +95,23 @@ class GameVersion1(GameVersion):
         io.sendline(answer.encode())
 
     def _choose_wrong_guess(self, answer: str) -> str:
-        for guess in self._iter_valid_guesses(len(answer)):
+        for guess in self.iter_valid_guesses(len(answer)):
             if guess != answer:
                 return guess
         raise ValueError(f"could not build a wrong guess for answer {answer!r}")
 
 
-class GameVersion2(GameVersion):
-    _REQUIREMENT_SIZE = 6
-
+class VariableRoundGameVersion(GameVersion):
     def parse_rounds(self, game_data: CowGameData, raw_data: bytes) -> list[RoundData]:
-        return self._parse_variable_rounds(game_data, raw_data, self._parse_round)
+        return self.parse_variable_rounds(game_data, raw_data, self.parse_round)
 
-    def solve_round(self, io: pwn.tube, round_data: RoundData):
-        answer = self._format_secret_number(round_data)
-        for requirement in round_data.requirements:
-            guess = self._choose_matching_guess(answer, requirement)
-            io.sendline(guess.encode())
+    @abstractmethod
+    def parse_round(
+        self, game_data: CowGameData, raw_data: bytes, offset: int
+    ) -> tuple[RoundData, int]:
+        raise NotImplementedError
 
-    def _parse_variable_rounds(self, game_data: CowGameData, raw_data: bytes, parser):
+    def parse_variable_rounds(self, game_data: CowGameData, raw_data: bytes, parser):
         offset = game_data.header_size
         end_offset = offset + game_data.header.file_size
         rounds = []
@@ -122,7 +124,17 @@ class GameVersion2(GameVersion):
             raise ValueError(f"data size mismatch: expected end={end_offset}, actual end={offset}")
         return rounds
 
-    def _parse_round(
+
+class GameVersion2(VariableRoundGameVersion):
+    _REQUIREMENT_SIZE = 6
+
+    def solve_round(self, io: pwn.tube, round_data: RoundData):
+        answer = self.format_secret_number(round_data)
+        for requirement in round_data.requirements:
+            guess = self._choose_matching_guess(answer, requirement)
+            io.sendline(guess.encode())
+
+    def parse_round(
         self, game_data: CowGameData, raw_data: bytes, offset: int
     ) -> tuple[RoundData, int]:
         round_data = game_data.parse_round(raw_data, offset)
@@ -161,27 +173,40 @@ class GameVersion2(GameVersion):
         return AttemptRequirement(cows=int(match.group(1)), bulls=int(match.group(2)))
 
     def _choose_matching_guess(self, answer: str, requirement: AttemptRequirement) -> str:
-        for guess in self._iter_valid_guesses(len(answer)):
-            if self._score_guess(answer, guess) == requirement:
+        for guess in self.iter_valid_guesses(len(answer)):
+            if self.score_guess(answer, guess) == requirement:
                 return guess
         raise ValueError(f"could not satisfy requirement {requirement} for {answer!r}")
 
 
-class GameVersion3(GameVersion2):
+class HashedRequirementGameVersion(VariableRoundGameVersion):
     _REQUIREMENT_SIZE = hashlib.sha256().digest_size
 
+    def parse_requirement_hashes(
+        self, raw_data: bytes, offset: int, attempts: int
+    ) -> tuple[bytes, ...]:
+        return tuple(
+            raw_data[
+                offset + attempt_index * self._REQUIREMENT_SIZE : offset
+                + (attempt_index + 1) * self._REQUIREMENT_SIZE
+            ]
+            for attempt_index in range(attempts)
+        )
+
+
+class GameVersion3(HashedRequirementGameVersion):
     def solve_round(self, io: pwn.tube, round_data: RoundData):
-        answer = self._format_secret_number(round_data)
+        answer = self.format_secret_number(round_data)
         for requirement_hash in round_data.requirement_hashes:
             guess = self._choose_matching_hash(answer, requirement_hash)
             io.sendline(guess.encode())
 
-    def _parse_round(
+    def parse_round(
         self, game_data: CowGameData, raw_data: bytes, offset: int
     ) -> tuple[RoundData, int]:
         round_data = game_data.parse_round(raw_data, offset)
         offset += game_data.round_size
-        requirement_hashes = self._parse_requirement_hashes(raw_data, offset, round_data.attempts)
+        requirement_hashes = self.parse_requirement_hashes(raw_data, offset, round_data.attempts)
         offset += len(requirement_hashes) * self._REQUIREMENT_SIZE
 
         return (
@@ -195,20 +220,9 @@ class GameVersion3(GameVersion2):
             offset,
         )
 
-    def _parse_requirement_hashes(
-        self, raw_data: bytes, offset: int, attempts: int
-    ) -> tuple[bytes, ...]:
-        return tuple(
-            raw_data[
-                offset + attempt_index * self._REQUIREMENT_SIZE : offset
-                + (attempt_index + 1) * self._REQUIREMENT_SIZE
-            ]
-            for attempt_index in range(attempts)
-        )
-
     def _choose_matching_hash(self, answer: str, requirement_hash: bytes) -> str:
-        for guess in self._iter_valid_guesses(len(answer)):
-            requirement = self._score_guess(answer, guess)
+        for guess in self.iter_valid_guesses(len(answer)):
+            requirement = self.score_guess(answer, guess)
             if self._hash_requirement(requirement) == requirement_hash:
                 return guess
         raise ValueError(f"could not satisfy hash {requirement_hash.hex()}")
@@ -218,6 +232,63 @@ class GameVersion3(GameVersion2):
         return hashlib.sha256(payload).digest()
 
 
+class GameVersion4(HashedRequirementGameVersion):
+    _ROUND_STRUCT = Struct("<IHH16sQ")
+    _ORDER_STRUCT = Struct("<H")
+
+    def solve_round(self, io: pwn.tube, round_data: RoundData):
+        answer = self.format_secret_number(round_data)
+        for requirement_hash in round_data.requirement_hashes:
+            guess = self._choose_matching_salted_hash(answer, round_data, requirement_hash)
+            io.sendline(guess.encode())
+
+    def parse_round(
+        self, game_data: CowGameData, raw_data: bytes, offset: int
+    ) -> tuple[RoundData, int]:
+        round_data = self._parse_salted_round(raw_data, offset)
+        offset += self._ROUND_STRUCT.size
+        offset += round_data.attempts * self._ORDER_STRUCT.size
+        requirement_hashes = self.parse_requirement_hashes(raw_data, offset, round_data.attempts)
+        offset += len(requirement_hashes) * self._REQUIREMENT_SIZE
+
+        return (
+            RoundData(
+                entity_id=round_data.entity_id,
+                attempts=round_data.attempts,
+                length=round_data.length,
+                secret_number=round_data.secret_number,
+                salt=round_data.salt,
+                requirement_hashes=requirement_hashes,
+            ),
+            offset,
+        )
+
+    def _parse_salted_round(self, raw_data: bytes, offset: int) -> RoundData:
+        entity_id, attempts, length, salt, secret_number = self._ROUND_STRUCT.unpack_from(
+            raw_data, offset
+        )
+        return RoundData(
+            entity_id=entity_id,
+            attempts=attempts,
+            length=length,
+            secret_number=secret_number,
+            salt=salt,
+        )
+
+    def _choose_matching_salted_hash(
+        self, answer: str, round_data: RoundData, requirement_hash: bytes
+    ) -> str:
+        for guess in self.iter_valid_guesses(len(answer)):
+            requirement = self.score_guess(answer, guess)
+            if self._hash_salted_requirement(round_data.salt, requirement) == requirement_hash:
+                return guess
+        raise ValueError(f"could not satisfy salted hash {requirement_hash.hex()}")
+
+    def _hash_salted_requirement(self, salt: bytes, requirement: AttemptRequirement) -> bytes:
+        payload = f"{requirement.cows:02d}C{requirement.bulls:02d}B".encode()
+        return hashlib.sha256(salt + payload).digest()
+
+
 class CowGameData:
     _HEADER_STRUCT = Struct("<4sHHII")
     _ROUND_STRUCT = Struct("<IHHQ")
@@ -225,6 +296,7 @@ class CowGameData:
         1: GameVersion1,
         2: GameVersion2,
         3: GameVersion3,
+        4: GameVersion4,
     }
 
     def __init__(self, file_path: str | Path):
@@ -300,7 +372,7 @@ class CowGameData:
 
 def main():
     game_data = CowGameData("/challenge/gamefile.bin")
-    with pwn.process("/challenge/hashing-heifers") as io:
+    with pwn.process("/challenge/salty-stampede") as io:
         tee(io)
         game_data.solve_round(io)
         io.recvrepeat()

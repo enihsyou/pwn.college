@@ -1,10 +1,3 @@
-struct gamedata
-{
-    struct header_data header_data;
-    struct round_data *round_data_p;
-    __int64 this_game_p;
-    __int32 round;
-};
 struct header_data
 {
     char magic[4];
@@ -19,4 +12,11 @@ struct round_data
     unsigned __int16 attempts;
     unsigned __int16 length;
     unsigned __int64 secret_number;
+};
+struct gamedata
+{
+    struct header_data header_data;
+    struct round_data *round_data_p;
+    __int64 this_game_p;
+    __int32 round;
 };
