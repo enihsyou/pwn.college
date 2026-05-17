@@ -11,6 +11,12 @@ import pwn
 
 
 @dataclass(frozen=True)
+class AttemptRequirement:
+    cows: int
+    bulls: int
+
+
+@dataclass(frozen=True)
 class HeaderData:
     magic: bytes
     version: int
@@ -25,6 +31,7 @@ class RoundData:
     attempts: int
     length: int
     secret_number: int
+    requirements: tuple[AttemptRequirement, ...] = ()
 
 
 class CowGameData:
@@ -51,11 +58,9 @@ class CowGameData:
         magic, version, flag, file_size, total_round = self._HEADER_STRUCT.unpack_from(raw_data)
         if magic != b"CBGF":
             raise ValueError(f"invalid magic: {magic!r}")
-        if file_size != len(raw_data) - self._HEADER_STRUCT.size:
-            raise ValueError(
-                "data size mismatch: "
-                f"header={file_size}, actual={len(raw_data) - self._HEADER_STRUCT.size}"
-            )
+        data_size = len(raw_data) - self._HEADER_STRUCT.size
+        if file_size != data_size:
+            raise ValueError(f"data size mismatch: header={file_size}, actual={data_size}")
 
         return HeaderData(
             magic=magic,
@@ -66,7 +71,14 @@ class CowGameData:
         )
 
     def _parse_rounds(self, raw_data: bytes) -> list[RoundData]:
-        rounds_offset = self._HEADER_STRUCT.size
+        if self.header.version == 1:
+            return self._parse_rounds_v1(raw_data)
+        if self.header.version == 2:
+            return self._parse_rounds_v2(raw_data)
+        raise ValueError(f"unsupported gamefile version: {self.header.version}")
+
+    def _parse_rounds_v1(self, raw_data: bytes) -> list[RoundData]:
+        data_offset = self._HEADER_STRUCT.size
         expected_data_size = self.header.total_round * self._ROUND_STRUCT.size
         if expected_data_size != self.header.file_size:
             raise ValueError(
@@ -74,7 +86,7 @@ class CowGameData:
                 f"rounds={self.header.total_round}, data_size={self.header.file_size}"
             )
 
-        expected_size = rounds_offset + expected_data_size
+        expected_size = data_offset + expected_data_size
         if expected_size != len(raw_data):
             raise ValueError(
                 f"round data size mismatch: expected={expected_size}, actual={len(raw_data)}"
@@ -82,8 +94,55 @@ class CowGameData:
 
         return [
             self._parse_round(raw_data, offset)
-            for offset in range(rounds_offset, expected_size, self._ROUND_STRUCT.size)
+            for offset in range(data_offset, expected_size, self._ROUND_STRUCT.size)
         ]
+
+    def _parse_rounds_v2(self, raw_data: bytes) -> list[RoundData]:
+        offset = self._HEADER_STRUCT.size
+        end_offset = offset + self.header.file_size
+        rounds = []
+
+        for _ in range(self.header.total_round):
+            round_data = self._parse_round(raw_data, offset)
+            offset += self._ROUND_STRUCT.size
+
+            requirements = self._parse_requirements(raw_data, offset, round_data.attempts)
+            offset += len(requirements) * 6
+            rounds.append(
+                RoundData(
+                    entity_id=round_data.entity_id,
+                    attempts=round_data.attempts,
+                    length=round_data.length,
+                    secret_number=round_data.secret_number,
+                    requirements=requirements,
+                )
+            )
+
+        if offset != end_offset:
+            raise ValueError(
+                f"v2 data size mismatch: expected end={end_offset}, actual end={offset}"
+            )
+        return rounds
+
+    def _parse_requirements(
+        self, raw_data: bytes, offset: int, attempts: int
+    ) -> tuple[AttemptRequirement, ...]:
+        result = []
+        for attempt_index in range(attempts):
+            requirement_offset = offset + attempt_index * 6
+            requirement = raw_data[requirement_offset : requirement_offset + 6]
+            result.append(self._parse_requirement(requirement))
+        return tuple(result)
+
+    @staticmethod
+    def _parse_requirement(raw_requirement: bytes) -> AttemptRequirement:
+        match = re.fullmatch(rb"(\d{2})C(\d{2})B", raw_requirement)
+        if not match:
+            raise ValueError(f"invalid v2 attempt requirement: {raw_requirement!r}")
+        return AttemptRequirement(
+            cows=int(match.group(1)),
+            bulls=int(match.group(2)),
+        )
 
     def _parse_round(self, raw_data: bytes, offset: int) -> RoundData:
         entity_id, attempts, length, secret_number = self._ROUND_STRUCT.unpack_from(
@@ -106,8 +165,29 @@ def choose_wrong_guess(answer: str) -> str:
     raise ValueError(f"could not build a wrong guess for answer {answer!r}")
 
 
+def choose_matching_guess(answer: str, requirement: AttemptRequirement) -> str:
+    for guess in iter_valid_guesses(len(answer)):
+        if score_guess(answer, guess) == requirement:
+            return guess
+    raise ValueError(f"could not satisfy requirement {requirement} for answer {answer!r}")
+
+
+def iter_valid_guesses(length: int):
+    for digits in itertools.permutations("1234567890", length):
+        if digits[0] != "0":
+            yield "".join(digits)
+
+
 def format_secret_number(secret_number: int, length: int) -> str:
     return f"{secret_number:0{length}d}"
+
+
+def score_guess(answer: str, guess: str) -> AttemptRequirement:
+    bulls = sum(answer_digit == guess_digit for answer_digit, guess_digit in zip(answer, guess))
+    matching_digits = sum(
+        min(answer.count(str(digit)), guess.count(str(digit))) for digit in range(10)
+    )
+    return AttemptRequirement(cows=matching_digits - bulls, bulls=bulls)
 
 
 def parse_entity_id(output: bytes) -> int:
@@ -121,6 +201,17 @@ def solve_round(io: pwn.tube, game_data: CowGameData):
     intro = io.recvuntil(b"digits each).\n")
     entity_id = parse_entity_id(intro)
     round_data = game_data.require_round(entity_id)
+
+    if game_data.header.version == 1:
+        solve_round_v1(io, round_data)
+        return
+    if game_data.header.version == 2:
+        solve_round_v2(io, round_data)
+        return
+    raise ValueError(f"unsupported gamefile version: {game_data.header.version}")
+
+
+def solve_round_v1(io: pwn.tube, round_data: RoundData):
     answer = format_secret_number(round_data.secret_number, round_data.length)
     wrong_guess = choose_wrong_guess(answer)
 
@@ -129,9 +220,16 @@ def solve_round(io: pwn.tube, game_data: CowGameData):
     io.sendline(answer.encode())
 
 
+def solve_round_v2(io: pwn.tube, round_data: RoundData):
+    answer = format_secret_number(round_data.secret_number, round_data.length)
+    for requirement in round_data.requirements:
+        guess = choose_matching_guess(answer, requirement)
+        io.sendline(guess.encode())
+
+
 def main():
     game_data = CowGameData("/challenge/gamefile.bin")
-    with pwn.process("/challenge/when-the-cow-says-moo") as io:
+    with pwn.process("/challenge/predictable-migration") as io:
         tee(io)
         solve_round(io, game_data)
         io.recvrepeat()
