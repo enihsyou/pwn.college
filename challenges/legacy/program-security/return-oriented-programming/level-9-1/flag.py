@@ -35,7 +35,7 @@ def find_challenge(search_path="/challenge"):
         raise FileNotFoundError(f"Multiple executables found in {search_path}")
     return xs[0]
 
-
+# pivotal-prelude
 bin = find_challenge()
 elf = pwn.ELF(bin, checksec=False)
 input_bss = elf.symbols["data"] + 0x10000  # input buffer

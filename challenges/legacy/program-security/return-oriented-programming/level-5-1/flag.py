@@ -50,6 +50,7 @@ def find_offset():
     return offset
 
 
+# stop-pop-and-rop-2
 bin = find_challenge()
 elf = pwn.ELF(bin, checksec=False)
 
