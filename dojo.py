@@ -22,7 +22,9 @@ class Args:
 
     entrypoint: Path
     include_siblings: bool
+    upload_only: bool
     remote_root: PurePosixPath
+    ssh_connection: dict
     arguments: tuple[str, ...] = ()
 
     def watched_files(self) -> set[Path]:
@@ -39,8 +41,7 @@ class ChangeWatcher:
     def __init__(self, args: Args) -> None:
         self.args = args
         self.pending = {
-            path: local_to_remote(path, args.remote_root)
-            for path in args.watched_files()
+            path: local_to_remote(path, args.remote_root) for path in args.watched_files()
         }
         self.notified = Event()
         self.lock = Lock()
@@ -156,6 +157,18 @@ def parse_args() -> Args:
         help="remote deployment directory",
     )
     parser.add_argument(
+        "-s",
+        "--ssh",
+        help="ssh connection string (e.g. user@host:port)",
+        default="hacker@dojo.pwn.college",
+    )
+    parser.add_argument(
+        "-u",
+        "--upload-only",
+        action="store_true",
+        help="only upload files without executing",
+    )
+    parser.add_argument(
         "args",
         nargs=argparse.REMAINDER,
         help="arguments to pass to the remote script",
@@ -164,8 +177,25 @@ def parse_args() -> Args:
     entrypoint: Path = namespace.entrypoint.resolve()
     if not entrypoint.is_file():
         raise FileNotFoundError(entrypoint)
+
+    ssh_str = namespace.ssh
+    if "@" not in ssh_str:
+        raise ValueError("Invalid SSH connection string, must be in format user@host[:port]")
+    user_host, *port = ssh_str.split(":")
+    user, host = user_host.split("@")
+    ssh_connection = {
+        "user": user,
+        "host": host,
+        **({"port": int(port[0])} if port else {}),
+    }
+
     return Args(
-        entrypoint, namespace.recursive, namespace.directory, tuple(namespace.args)
+        entrypoint,
+        namespace.recursive,
+        namespace.upload_only,
+        namespace.directory,
+        ssh_connection,
+        tuple(namespace.args),
     )
 
 
@@ -210,7 +240,7 @@ def remote_command(args: Args) -> list[str]:
     ep = args.entrypoint
     rf = str(local_to_remote(ep, args.remote_root))
     if ep.suffix == ".py":
-        return ["/run/dojo/bin/python3", rf, *args.arguments]
+        return ["python3", rf, *args.arguments]
 
     raise NotImplementedError(f"Unsupported file type: {ep.suffix or ep.name}")
 
@@ -252,15 +282,20 @@ def wait_for_redeploy(watcher: ChangeWatcher) -> object:
 
 def deploy_loop(args: Args, watcher: ChangeWatcher) -> None:
     """Orchestrates the continuous upload, execution, and redeploy cycle."""
-    with pwn.ssh(user="hacker", host="dojo.pwn.college", raw=True) as ssh:
+    with pwn.ssh(**args.ssh_connection, raw=True) as ssh:
         upload_files = file_uploader(ssh, args)
         while True:
             upload_files(watcher)
-            result = run_remote_until_change(ssh, args, watcher)
-            if result is USER_STOPPED:
-                return
-            if result is REDEPLOY_REQUESTED:
-                continue
+
+            if args.upload_only:
+                pwn.log.info_once("Upload-only mode enabled, skipping execution")
+            else:
+                result = run_remote_until_change(ssh, args, watcher)
+                if result is USER_STOPPED:
+                    return
+                if result is REDEPLOY_REQUESTED:
+                    continue
+
             if wait_for_redeploy(watcher) is USER_STOPPED:
                 return
 
