@@ -6,23 +6,6 @@ pwn.context.os = "linux"
 pwn.context.log_level = "warn"
 
 
-def find_challenge(search_path="/challenge"):
-    from pathlib import Path
-    import os
-    import stat
-
-    xs = [
-        str(f.absolute())
-        for f in Path(search_path).iterdir()
-        if f.is_file() and os.access(f, os.X_OK) and (f.stat().st_mode & stat.S_ISUID)
-    ]
-    if not xs:
-        raise FileNotFoundError(f"No executable found in {search_path}")
-    if len(xs) > 1:
-        raise FileNotFoundError(f"Multiple executables found in {search_path}")
-    return xs[0]
-
-
 canary = bytearray()
 buffer_addr = 0x40
 canary_addr = 0x58
