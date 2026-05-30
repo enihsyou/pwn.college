@@ -7,8 +7,6 @@ pwn.context.update(arch="amd64", os="linux", terminal=["tmux", "new-window"])
 
 
 def tee[T: pwn.tube](process: T) -> T:
-    import sys
-
     orig_recv_raw = process.recv_raw
     output = sys.__stdout__.buffer  # type: ignore sys.stdout is replaced by pwn.term
 
@@ -39,15 +37,6 @@ def find_challenge(search_path="/challenge"):
     return xs[0]
 
 
-def make_non_setuid_binary(bin):
-    import shutil
-
-    tmp = f"/tmp/{bin.removeprefix('/challenge/')}"
-    shutil.copyfile(bin, tmp)
-    pwn.os.chmod(tmp, 0o755)  # remove setuid
-    return tmp
-
-
 def find_offset_to_canary():
     for length in range(0x11, 0x101, 0x8):
         with pwn.process(["nc", "127.0.0.1", "1337"], stdout=pwn.PIPE, level="error") as io:
@@ -69,7 +58,7 @@ def kill_child_process(bin):
 
 
 def one_round(io_maker: Callable[[], pwn.tube], elf, libc):
-    kill_child_process(elf.path) # kill orphaned process from previous round
+    kill_child_process(elf.path)  # kill orphaned process from previous round
     offset_canary = find_offset_to_canary()
     pwn.success(f"found canary offset: {offset_canary:#x}")
 
@@ -150,20 +139,6 @@ def one_round(io_maker: Callable[[], pwn.tube], elf, libc):
     crack_flag()
 
 
-def one_round_debug(bin, elf, libc):
-    io = pwn.gdb.debug(
-        bin,
-        gdbscript="""
-        source /opt/gef/gef.py
-        c
-        """,
-        env={"PADDING": pwn.cyclic(4096)},
-        aslr=False,
-    )
-    with io:
-        one_round(io, elf, libc)
-
-
 def one_round_worker(elf, libc):
     def io_maker():
         return pwn.process(["nc", "127.0.0.1", "1337"], stdout=pwn.PIPE, level="error")
@@ -174,18 +149,12 @@ def one_round_worker(elf, libc):
 def ctf():
     # libc-lottery
     root_bin = find_challenge()
-    user_bin = make_non_setuid_binary(root_bin)
     elf = pwn.ELF(root_bin, checksec=False)
     assert elf.libs
 
     # file name contains `/libc-`, so we can't use elf.libc.
     libc_path = next(lib for lib in elf.libs.keys() if "libc" in lib and ".so" in lib)
     libc = pwn.ELF(libc_path, checksec=False)
-
-    if "gdb" in sys.argv:
-        # only non-setuid binary can disable ASLR
-        one_round_debug(user_bin, elf, libc)
-        return
 
     one_round_worker(elf, libc)
 

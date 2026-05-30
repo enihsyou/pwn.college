@@ -8,8 +8,6 @@ pwn.context.update(arch="amd64", os="linux", terminal=["tmux", "new-window"])
 
 
 def tee[T: pwn.tube](process: T) -> T:
-    import sys
-
     orig_recv_raw = process.recv_raw
     output = sys.__stdout__.buffer  # type: ignore sys.stdout is replaced by pwn.term
 
@@ -38,15 +36,6 @@ def find_challenge(search_path="/challenge"):
     if len(xs) > 1:
         raise FileNotFoundError(f"Multiple executables found in {search_path}")
     return xs[0]
-
-
-def make_non_setuid_binary(bin):
-    import shutil
-
-    tmp = f"/tmp/{bin.removeprefix('/challenge/')}"
-    shutil.copyfile(bin, tmp)
-    pwn.os.chmod(tmp, 0o755)  # remove setuid
-    return tmp
 
 
 @dataclass
@@ -179,20 +168,6 @@ def one_round(io_maker: Callable[[], pwn.tube], static: Static):
     crack_flag()
 
 
-def one_round_debug(bin, static):
-    io = pwn.gdb.debug(
-        bin,
-        gdbscript="""
-        source /opt/gef/gef.py
-        c
-        """,
-        env={"PADDING": pwn.cyclic(4096)},
-        aslr=False,
-    )
-    with io:
-        one_round(io, static)
-
-
 def one_round_worker(static):
     def io_maker():
         return pwn.process(["nc", "127.0.0.1", "1337"], stdout=pwn.PIPE, level="error")
@@ -203,7 +178,6 @@ def one_round_worker(static):
 def ctf():
     # rop-roulette
     root_bin = find_challenge()
-    user_bin = make_non_setuid_binary(root_bin)
 
     elf = pwn.ELF(root_bin, checksec=False)
     assert elf.libc
@@ -215,10 +189,6 @@ def ctf():
     pwn.success(f"found offset_callret: {offset_callret:#x}")
 
     static = Static(offset_canary, offset_callret, elf)
-    if "gdb" in sys.argv:
-        # only non-setuid binary can disable ASLR
-        one_round_debug(user_bin, static)
-        return
 
     one_round_worker(static)
 
