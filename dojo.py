@@ -304,15 +304,17 @@ def deploy_loop(args: Args, watcher: ChangeWatcher) -> None:
 
             if args.upload_only:
                 pwn.log.info_once("Upload-only mode enabled, skipping execution")
+                result = REMOTE_EXITED
             else:
                 result = run_remote_until_change(ssh, args, watcher)
                 if result is USER_STOPPED:
                     return
-                if result is REDEPLOY_REQUESTED:
-                    continue
 
-            if wait_for_redeploy(watcher) is USER_STOPPED:
+            if result is REMOTE_EXITED:
+                result = wait_for_redeploy(watcher)
+            if result is USER_STOPPED:
                 return
+            assert result is REDEPLOY_REQUESTED
 
             # Clear the terminal on subsequent redeploys
             if args.clear_screen and can_clear_screen():
