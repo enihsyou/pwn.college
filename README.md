@@ -6,5 +6,9 @@ The directory structure of the challenges keeps sync with [pwncollege/challenges
 
 > [!IMPORTANT]
 > Spoiler alert! Think before continue exploring. Avoid the temptation to copy-paste; try to solve these yourself first. Combined with AI, your own insights will yield much better results. Happy coding!
+>
+> You might be more interested in this writeup: <https://writeups.kunull.net/pwn-college>.
 
 The [workspace](workspace) directory stores home‑directory configuration files intended to enhance the remote development workflow. For example, it includes scripts that allow retrieving the GUI desktop clipboard over SSH.
+
+Disclaimer: All solutions approaches were independently developed by myself.
