@@ -1,5 +1,7 @@
 import argparse
+import os
 import shlex
+import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -25,6 +27,7 @@ class Args:
     upload_only: bool
     remote_root: PurePosixPath
     ssh_connection: dict
+    clear_screen: bool
     arguments: tuple[str, ...] = ()
 
     def watched_files(self) -> set[Path]:
@@ -157,16 +160,19 @@ def parse_args() -> Args:
         help="remote deployment directory",
     )
     parser.add_argument(
-        "-s",
         "--ssh",
         help="ssh connection string (e.g. user@host:port)",
         default="hacker@dojo.pwn.college",
     )
     parser.add_argument(
-        "-u",
         "--upload-only",
         action="store_true",
         help="only upload files without executing",
+    )
+    parser.add_argument(
+        "--no-clear-screen",
+        action="store_true",
+        help="disable clearing the terminal on each redeploy",
     )
     parser.add_argument(
         "args",
@@ -195,6 +201,7 @@ def parse_args() -> Args:
         namespace.upload_only,
         namespace.directory,
         ssh_connection,
+        not namespace.no_clear_screen,
         tuple(namespace.args),
     )
 
@@ -280,6 +287,14 @@ def wait_for_redeploy(watcher: ChangeWatcher) -> object:
         return USER_STOPPED
 
 
+def can_clear_screen() -> bool:
+    if not sys.stdout.isatty():
+        return False
+    if "PWNLIB_NOTERM" in os.environ:
+        return False
+    return True
+
+
 def deploy_loop(args: Args, watcher: ChangeWatcher) -> None:
     """Orchestrates the continuous upload, execution, and redeploy cycle."""
     with pwn.ssh(**args.ssh_connection, raw=True) as ssh:
@@ -298,6 +313,11 @@ def deploy_loop(args: Args, watcher: ChangeWatcher) -> None:
 
             if wait_for_redeploy(watcher) is USER_STOPPED:
                 return
+
+            # Clear the terminal on subsequent redeploys
+            if args.clear_screen and can_clear_screen():
+                sys.stdout.write('\x1b[2J\x1b[3J\x1b[H')
+                sys.stdout.flush()
 
 
 def main() -> None:
