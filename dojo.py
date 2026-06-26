@@ -4,6 +4,7 @@ import shlex
 import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from threading import Event, Lock
 
@@ -242,12 +243,25 @@ def interrupt_remote(ssh: pwn.ssh, io: pwn.tubes.ssh.ssh_process) -> None:
         ssh.system(f"kill -TERM {io.pid}").wait()
 
 
-def remote_command(args: Args) -> list[str]:
-    """Builds the shell command for executing the entrypoint on the remote."""
+# The dojo's `python` is a nix binary wrapper that hard-codes
+# `PYTHONNOUSERSITE=true`, so the conventional
+# `~/.local/lib/pythonX.Y/site-packages` is dropped from sys.path even though
+# the directory exists. `python -m site --user-site` still reports the path,
+# and we re-introduce it through the `env` we hand to ssh.process so user
+# packages (e.g. `dojotool`) remain importable.
+@lru_cache(maxsize=1)
+def discover_user_site(ssh: pwn.ssh) -> str:
+    """Discover and cache the remote python's user-site directory."""
+    return ssh.system("python -m site --user-site").recvrepeat().decode().strip()
+
+
+def remote_command(args: Args, ssh: pwn.ssh) -> tuple[list[str], dict[str, str]]:
+    """Builds the remote (argv, env) for executing the entrypoint."""
     ep = args.entrypoint
     rf = str(local_to_remote(ep, args.remote_root))
     if ep.suffix == ".py":
-        return ["python3", rf, *args.arguments]
+        env = {"PYTHONPATH": discover_user_site(ssh)}
+        return ["python3", rf, *args.arguments], env
 
     raise NotImplementedError(f"Unsupported file type: {ep.suffix or ep.name}")
 
@@ -258,11 +272,14 @@ def run_remote_until_change(
     watcher: ChangeWatcher,
 ) -> object:
     """Executes the remote command and monitors for local file changes."""
-    argv = remote_command(args)
+    argv, env = remote_command(args, ssh)
     cwd = str(args.remote_root)
     io: pwn.tubes.ssh.ssh_process
 
-    with tee(ssh.process(argv, argv[0], cwd=cwd, aslr=True)) as io:  # type: ignore
+    # env in ssh.system will replace the remote environment, use shell wrapper (ssh.system) for now. 
+    # see https://github.com/Gallopsled/pwntools/issues/2751
+    # with tee(ssh.process(argv, argv[0], cwd=cwd, env=env, aslr=True)) as io:  # type: ignore
+    with tee(ssh.system(argv, cwd=cwd, env=env)) as io:  # type: ignore
         try:
             while True:
                 io.recv(timeout=3)  # type: ignore
@@ -318,7 +335,7 @@ def deploy_loop(args: Args, watcher: ChangeWatcher) -> None:
 
             # Clear the terminal on subsequent redeploys
             if args.clear_screen and can_clear_screen():
-                sys.stdout.write('\x1b[2J\x1b[3J\x1b[H')
+                sys.stdout.write("\x1b[2J\x1b[3J\x1b[H")
                 sys.stdout.flush()
 
 

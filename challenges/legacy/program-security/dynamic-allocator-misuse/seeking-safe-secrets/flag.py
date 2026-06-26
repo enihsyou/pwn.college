@@ -1,41 +1,7 @@
-import sys
+from dojotool import tee, find_challenge
 import pwn
 
 pwn.context.update(arch="amd64", os="linux", terminal=["tmux", "new-window"])
-
-
-def tee[T: pwn.tube](process: T) -> T:
-    orig_recv_raw = process.recv_raw
-    output = sys.__stdout__.buffer  # type: ignore sys.stdout is replaced by pwn.term
-
-    def recv_raw(numb, *args, **kwargs):
-        data = orig_recv_raw(numb, *args, **kwargs) or b""  # orig may return str('')
-        output.write(data)
-        output.flush()
-        return data
-
-    process.recv_raw = recv_raw
-    return process
-
-
-def find_challenge(search_path="/challenge"):
-    from pathlib import Path
-    import os
-    import stat
-
-    xs = [
-        str(f.absolute())
-        for f in Path(search_path).iterdir()
-        if f.is_file()
-        and not f.name.startswith(".")
-        and os.access(f, os.X_OK)
-        and (f.stat().st_mode & stat.S_ISUID)
-    ]
-    if not xs:
-        raise FileNotFoundError(f"No executable found in {search_path}")
-    if len(xs) > 1:
-        raise FileNotFoundError(f"Multiple executables found in {search_path}")
-    return xs[0]
 
 
 def one_round(io: pwn.process):

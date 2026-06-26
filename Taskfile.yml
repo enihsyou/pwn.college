@@ -1,0 +1,23 @@
+# https://taskfile.dev
+#
+# Sync the local `workspace/` tree to the pwn.college dojo so that the
+# `dojotool` package is importable as `from dojotool import tee, find_challenge`
+# under the user `hacker` on the dojo.
+#
+#   task sync
+
+version: "3"
+
+vars:
+  DOJO_HOST: hacker@dojo.pwn.college
+  HACKER_SRC: workspace/home/hacker
+  # The PATH-resolved `ssh.exe` (C:\Program Files\OpenSSH) is incompatible with
+  # the mingw `rsync.exe` shim; pin to the matching msys64 ssh so the rsync
+  # protocol handshake succeeds.
+  RSYNC_SSH: /c/msys64/usr/bin/ssh
+
+tasks:
+  sync:
+    desc: Sync workspace/home/hacker -> ~ on {{.DOJO_HOST}}
+    cmds:
+      - rsync -av -e "{{.RSYNC_SSH}}" "{{.HACKER_SRC}}/" "{{.DOJO_HOST}}:./"

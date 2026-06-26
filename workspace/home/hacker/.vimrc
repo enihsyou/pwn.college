@@ -18,6 +18,17 @@ augroup numbertoggle
   autocmd BufLeave,FocusLost,InsertEnter,WinLeave   * if &nu                  | set nornu | endif
 augroup END
 
+augroup Binary
+  au!
+  au BufReadPre  *.cimg let &bin=1
+  au BufReadPost *.cimg if &bin | %!xxd
+  au BufReadPost *.cimg set ft=xxd | endif
+  au BufWritePre *.cimg if &bin | %!xxd -r
+  au BufWritePre *.cimg endif
+  au BufWritePost *.cimg if &bin | %!xxd
+  au BufWritePost *.cimg set nomod | endif
+augroup END
+
 set hlsearch            " highlight searches
 set incsearch           " do incremental searching
 set showmatch           " jump to matches when entering regexp

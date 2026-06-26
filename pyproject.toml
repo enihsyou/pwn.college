@@ -26,3 +26,5 @@ package = false
 [tool.pyright]
 # assign sys.platform to system challenge supposed to run.
 pythonPlatform = "Linux"
+# add extra paths to the python search path
+extraPaths = ["workspace/home/hacker/.local/lib/python3.13/site-packages"]
