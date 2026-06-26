@@ -1,3 +1,4 @@
+# Seeking Safe Secrets
 from dojotool import tee, find_challenge
 import pwn
 

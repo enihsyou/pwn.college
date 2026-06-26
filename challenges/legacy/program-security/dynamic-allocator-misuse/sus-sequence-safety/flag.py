@@ -1,3 +1,4 @@
+# Sus Sequence Safety
 import pwn
 from dojotool import tee, find_challenge
 
