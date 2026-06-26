@@ -250,9 +250,11 @@ def interrupt_remote(ssh: pwn.ssh, io: pwn.tubes.ssh.ssh_process) -> None:
 # and we re-introduce it through the `env` we hand to ssh.process so user
 # packages (e.g. `dojotool`) remain importable.
 @lru_cache(maxsize=1)
-def discover_user_site(ssh: pwn.ssh) -> str:
+def discover_user_site(ssh: pwn.ssh) -> dict[str, str]:
     """Discover and cache the remote python's user-site directory."""
-    return ssh.system("python -m site --user-site").recvrepeat().decode().strip()
+    env_output = ssh.system("PYTHONPATH=$(python -m site --user-site) env -0").recvrepeat().decode()
+    env = dict(line.split("=", 1) for line in env_output.split("\0") if line)
+    return env
 
 
 def remote_command(args: Args, ssh: pwn.ssh) -> tuple[list[str], dict[str, str]]:
@@ -260,7 +262,7 @@ def remote_command(args: Args, ssh: pwn.ssh) -> tuple[list[str], dict[str, str]]
     ep = args.entrypoint
     rf = str(local_to_remote(ep, args.remote_root))
     if ep.suffix == ".py":
-        env = {"PYTHONPATH": discover_user_site(ssh)}
+        env = discover_user_site(ssh)
         return ["python3", rf, *args.arguments], env
 
     raise NotImplementedError(f"Unsupported file type: {ep.suffix or ep.name}")
@@ -276,10 +278,9 @@ def run_remote_until_change(
     cwd = str(args.remote_root)
     io: pwn.tubes.ssh.ssh_process
 
-    # env in ssh.system will replace the remote environment, use shell wrapper (ssh.system) for now. 
+    # env in ssh.system will replace the remote environment, use shell wrapper (ssh.system) for now.
     # see https://github.com/Gallopsled/pwntools/issues/2751
-    # with tee(ssh.process(argv, argv[0], cwd=cwd, env=env, aslr=True)) as io:  # type: ignore
-    with tee(ssh.system(argv, cwd=cwd, env=env)) as io:  # type: ignore
+    with tee(ssh.process(argv, argv[0], cwd=cwd, env=env, aslr=True)) as io:  # type: ignore
         try:
             while True:
                 io.recv(timeout=3)  # type: ignore

@@ -65,3 +65,7 @@ function withenv() {
 }
 
 export PATH="$PATH:./"
+
+# Forcefully enable user site packages, even if PYTHONNOUSERSITE is set by nix makeCWrapper. 
+PYTHONPATH="$(python -m site --user-site):$PYTHONPATH"
+export PYTHONPATH
