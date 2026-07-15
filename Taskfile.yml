@@ -21,3 +21,27 @@ tasks:
     desc: Sync workspace/home/hacker -> ~ on {{.DOJO_HOST}}
     cmds:
       - rsync -av -e "{{.RSYNC_SSH}}" "{{.HACKER_SRC}}/" "{{.DOJO_HOST}}:./"
+
+  init:
+    desc: Initialize the dojo solution file from running challenge
+    vars:
+      # This value cannot be obtained, hardcoded for now
+      DOJO: program-security
+    cmds:
+      - |
+        hostname=$(ssh -q {{.DOJO_HOST}} hostname)
+        dojo="{{.DOJO}}"
+        module="${hostname%%~*}"
+        challenge="${hostname##*~}"
+        challenge="${challenge%-easy}"
+        challenge="${challenge%-hard}"
+        title=$(echo "${challenge}" | sed -E 's/-/ /g; s/\b[a-z]/\u&/g')
+        printf "Init challenge: %s\n" "${title}"
+
+        folder="challenges/legacy/${dojo}/${module}/${challenge}"
+        flagpy="${folder}/flag.py"
+        if [ ! -f "${flagpy}" ]; then
+          mkdir -p "${folder}"
+          echo "# ${title}" > "${flagpy}"
+        fi
+        printf "Challenge at: %s\n" "${flagpy}"
