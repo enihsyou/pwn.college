@@ -5,3 +5,6 @@
 /*-hard
 # IDA database
 /*.i64
+/*.id[0-2]
+/*.nam
+/*.til
