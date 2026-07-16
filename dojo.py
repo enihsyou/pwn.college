@@ -2,9 +2,9 @@ import argparse
 import os
 import shlex
 import sys
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from threading import Event, Lock
 
@@ -17,6 +17,8 @@ ChangeSet = dict[Path, PurePosixPath]
 REMOTE_EXITED = object()
 REDEPLOY_REQUESTED = object()
 USER_STOPPED = object()
+
+USER_SITE_CACHE_TTL = 24 * 60 * 60
 
 
 @dataclass(frozen=True)
@@ -249,12 +251,28 @@ def interrupt_remote(ssh: pwn.ssh, io: pwn.tubes.ssh.ssh_process) -> None:
 # the directory exists. `python -m site --user-site` still reports the path,
 # and we re-introduce it through the `env` we hand to ssh.process so user
 # packages (e.g. `dojotool`) remain importable.
-@lru_cache(maxsize=1)
+def read_user_site_cache(cachefile: Path) -> bytes | None:
+    """Reads a fresh user-site environment cache."""
+    if not cachefile.exists():
+        return None
+    if time.time() - os.path.getctime(cachefile) >= USER_SITE_CACHE_TTL:
+        return None
+    try:
+        return cachefile.read_bytes()
+    except OSError:
+        return None
+
+
 def discover_user_site(ssh: pwn.ssh) -> dict[str, str]:
     """Discover and cache the remote python's user-site directory."""
-    env_output = ssh.system("PYTHONPATH=$(python -m site --user-site) env -0").recvrepeat().decode()
-    env = dict(line.split("=", 1) for line in env_output.split("\0") if line)
-    return env
+    cachefile = Path(ssh._get_cachefile(f"dojo-user-site-{ssh.host}-{ssh.port}"))
+    env_output = read_user_site_cache(cachefile)
+    if env_output is None:
+        env_output = ssh.system("PYTHONPATH=$(python -m site --user-site) env -0").recvrepeat()
+        cachefile.write_bytes(env_output)
+
+    decoded = env_output.decode()
+    return dict(line.split("=", 1) for line in decoded.split("\0") if line)
 
 
 def remote_command(args: Args, ssh: pwn.ssh) -> tuple[list[str], dict[str, str]]:
