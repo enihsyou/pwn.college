@@ -35,7 +35,8 @@ tasks:
         challenge="${hostname##*~}"
         challenge="${challenge%-easy}"
         challenge="${challenge%-hard}"
-        title=$(echo "${challenge}" | sed -E 's/-/ /g; s/\b[a-z]/\u&/g')
+        # -b will make sed output LF instead of CRLF on Windows
+        title=$(echo "${challenge}" | sed -bE 's/-/ /g; s/\b[a-z]/\u&/g')
         printf "Init challenge: %s\n" "${title}"
 
         folder="challenges/legacy/${dojo}/${module}/${challenge}"
