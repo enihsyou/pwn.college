@@ -255,7 +255,7 @@ def read_user_site_cache(cachefile: Path) -> bytes | None:
     """Reads a fresh user-site environment cache."""
     if not cachefile.exists():
         return None
-    if time.time() - os.path.getctime(cachefile) >= USER_SITE_CACHE_TTL:
+    if time.time() - os.path.getmtime(cachefile) >= USER_SITE_CACHE_TTL:
         return None
     try:
         return cachefile.read_bytes()
