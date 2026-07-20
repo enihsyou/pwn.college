@@ -44,5 +44,29 @@ tasks:
         if [ ! -f "${flagpy}" ]; then
           mkdir -p "${folder}"
           echo "# ${title}" > "${flagpy}"
+          cat >> "${flagpy}" << 'EOF'
+        import pwn
+        from dojotool import tee, find_challenge
+
+
+        def one_round(io: pwn.process) -> None:
+            pass
+
+
+        def ctf() -> None:
+            root_bin = find_challenge()
+            with pwn.process(root_bin, raw=True, level="error") as io:
+                tee(io)
+                try:
+                    one_round(io)
+                    io.recvrepeat()
+                except Exception:
+                    io.recvrepeat(0.5)
+                    raise
+
+
+        if __name__ == "__main__":
+            ctf()
+        EOF
         fi
         printf "Challenge at: %s\n" "${flagpy}"
