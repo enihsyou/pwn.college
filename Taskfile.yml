@@ -14,7 +14,7 @@ vars:
   # The PATH-resolved `ssh.exe` (C:\Program Files\OpenSSH) is incompatible with
   # the mingw `rsync.exe` shim; pin to the matching msys64 ssh so the rsync
   # protocol handshake succeeds.
-  RSYNC_SSH: /c/msys64/usr/bin/ssh
+  RSYNC_SSH: /usr/bin/ssh
 
 tasks:
   sync:
