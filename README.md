@@ -15,3 +15,17 @@ The directory structure of the challenges keeps sync with [pwncollege/challenges
 The [workspace](workspace) directory stores home‑directory configuration files intended to enhance the remote development workflow. For example, it includes scripts that allow retrieving the GUI desktop clipboard over SSH.
 
 Disclaimer: All solutions approaches were independently developed by myself.
+
+## Running solution scripts
+
+Use `task init` after starting a challenge to initialize a local solution template
+from the running challenge. If the solution needs additional files from the local
+`workspace/` tree, use `task sync` to synchronize them to the challenge host.
+
+Pass the solution script to `dojo.py` to upload and run it on the dojo:
+
+```text
+python dojo.py ./challenges/legacy/program-security/program-exploitation/return-to-yanland/flag.py
+```
+
+Use forward slashes in challenge paths, including on Windows.
