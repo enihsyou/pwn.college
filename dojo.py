@@ -125,14 +125,16 @@ def tee[T: pwn.tube](process: T) -> T:
     output = sys.__stdout__.buffer  # type: ignore sys.stdout is replaced by pwn.term
 
     def send_raw(data, *args, **kwargs):
-        output.write(data)
-        output.flush()
+        if data:
+            output.write(data)
+            output.flush()
         return orig_send_raw(data, *args, **kwargs)
 
     def recv_raw(numb, *args, **kwargs):
         data = orig_recv_raw(numb, *args, **kwargs) or b""  # orig may return str('')
-        output.write(data)
-        output.flush()
+        if data: # prevent spin block
+            output.write(data)
+            output.flush()
         return data
 
     process.send_raw = send_raw

@@ -9,3 +9,7 @@
 /*.id[0-2]
 /*.nam
 /*.til
+
+## Python
+__pycache__/
+*.py[cod]

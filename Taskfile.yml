@@ -70,3 +70,18 @@ tasks:
         EOF
         fi
         printf "Challenge at: %s\n" "${flagpy}"
+
+  pull:
+    desc: Download challenge file to local
+    cmds:
+      # pull content inside `/challenge/`
+      # - rsync -avzP -e "{{.RSYNC_SSH}}" "{{.DOJO_HOST}}:/challenge/" .
+      - scp {{.DOJO_HOST}}:/challenge/* ./
+
+  dojotool-pth:
+    desc: Drop a .pth file so `import dojotool` resolves inside the uv venv
+    vars:
+      PTH_DIR: .venv/Lib/site-packages
+      MOD_DIR: workspace/home/hacker/.local/lib/python3.13/site-packages
+    cmds:
+      - printf "{{ relPath .PTH_DIR .MOD_DIR | toSlash }}" > "{{.PTH_DIR}}/dojotool.pth"
