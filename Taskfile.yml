@@ -26,7 +26,7 @@ tasks:
     desc: Initialize the dojo solution file from running challenge
     vars:
       # This value cannot be obtained, hardcoded for now
-      DOJO: program-security
+      DOJO: system-security
     cmds:
       - |
         hostname=$(ssh -q {{.DOJO_HOST}} hostname)
