@@ -23,14 +23,16 @@ tasks:
       - rsync -av -e "{{.RSYNC_SSH}}" "{{.HACKER_SRC}}/" "{{.DOJO_HOST}}:./"
 
   init:
-    desc: Initialize the dojo solution file from running challenge
+    desc: Initialize the dojo solution file from running challenge (extension=py|sh)
     vars:
       # This value cannot be obtained, hardcoded for now
       DOJO: system-security
+      extension: py
     cmds:
       - |
         hostname=$(ssh -q {{.DOJO_HOST}} hostname)
         dojo="{{.DOJO}}"
+        extension="{{.extension}}"
         module="${hostname%%~*}"
         challenge="${hostname##*~}"
         challenge="${challenge%-easy}"
@@ -40,11 +42,19 @@ tasks:
         printf "Init challenge: %s\n" "${title}"
 
         folder="challenges/legacy/${dojo}/${module}/${challenge}"
-        flagpy="${folder}/flag.py"
-        if [ ! -f "${flagpy}" ]; then
-          mkdir -p "${folder}"
-          echo "# ${title}" > "${flagpy}"
-          cat >> "${flagpy}" << 'EOF'
+        flag_file="${folder}/flag.${extension}"
+
+        case "${extension}" in
+          py|sh)
+            ;;
+          *)
+            printf "Unsupported extension: %s\\n" "${extension}" >&2
+            exit 1
+            ;;
+        esac
+
+        write_python_template() {
+          cat >> "$1" << 'EOF'
         import pwn
         from dojotool import tee, find_challenge
 
@@ -68,8 +78,18 @@ tasks:
         if __name__ == "__main__":
             ctf()
         EOF
+        }
+
+        create_solution_file() {
+          mkdir -p "${folder}"
+          printf "# %s\\n" "${title}" > "${flag_file}"
+          [ "${extension}" = "py" ] && write_python_template "${flag_file}"
+        }
+
+        if [ ! -f "${flag_file}" ]; then
+          create_solution_file
         fi
-        printf "Challenge at: %s\n" "${flagpy}"
+        printf "Challenge at: %s\n" "${flag_file}"
 
   pull:
     desc: Download challenge file to local
