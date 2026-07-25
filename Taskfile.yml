@@ -24,10 +24,12 @@ tasks:
 
   init:
     desc: Initialize the dojo solution file from running challenge (extension=py|sh)
+    summary: |
+      Usage: task init --extension=py
     vars:
       # This value cannot be obtained, hardcoded for now
       DOJO: system-security
-      extension: py
+      extension: '{{default "py" .extension}}'
     cmds:
       - |
         hostname=$(ssh -q {{.DOJO_HOST}} hostname)
