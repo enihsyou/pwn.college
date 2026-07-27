@@ -1,7 +1,8 @@
-from pwn import log
-from string import printable
-from requests import get
 from re import search
+from string import printable
+
+from pwn import log
+from requests import get
 
 
 def ctf():

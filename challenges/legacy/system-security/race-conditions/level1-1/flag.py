@@ -1,6 +1,7 @@
 # Level1 1
-import pwn
 import os
+
+import pwn
 from dojotool import find_challenge
 
 

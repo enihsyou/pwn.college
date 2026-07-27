@@ -1,6 +1,5 @@
 import re
 
-
 _REG_ENCODE = {
     "a": 8,
     "b": 16,

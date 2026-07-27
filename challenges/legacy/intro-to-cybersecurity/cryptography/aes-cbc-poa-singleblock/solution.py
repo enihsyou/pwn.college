@@ -1,6 +1,5 @@
 from Crypto.Util.Padding import unpad
-from pwn import process, log, xor
-
+from pwn import log, process, xor
 
 BLOCK_SIZE = 16
 
@@ -49,7 +48,7 @@ def full_attack(iv, ct, oracle):
     result = b""
 
     total_blocks = len(ct) // BLOCK_SIZE
-    with log.progress(f"开始恢复明文块") as p:
+    with log.progress("开始恢复明文块") as p:
         iv = blocks[0]
         for idx, ct in enumerate(blocks[1:], 1):
             p.status(f"{idx}/{total_blocks} ({idx/total_blocks:.2%})")

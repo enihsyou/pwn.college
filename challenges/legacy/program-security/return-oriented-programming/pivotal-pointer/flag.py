@@ -1,6 +1,7 @@
 # Pivotal Pointer
 import re
 import sys
+
 import pwn
 
 pwn.context.update(arch="amd64", os="linux", terminal=["tmux", "new-window"])
@@ -22,9 +23,9 @@ def tee[T: pwn.tube](process: T) -> T:
 
 
 def find_challenge(search_path="/challenge"):
-    from pathlib import Path
     import os
     import stat
+    from pathlib import Path
 
     xs = [
         str(f.absolute())

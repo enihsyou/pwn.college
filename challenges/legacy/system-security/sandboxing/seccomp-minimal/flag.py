@@ -1,6 +1,7 @@
 # Seccomp Minimal
 import pwn
-from dojotool import tee, find_challenge
+from dojotool import find_challenge, tee
+
 
 def one_round(io: pwn.process, index: int) -> int:
     # within mmap page range

@@ -1,12 +1,11 @@
 # Yansanity
 from __future__ import annotations
 
+import re
 from contextlib import contextmanager
 from dataclasses import dataclass
-import re
 
 import pwn
-
 from yan85_vm import Yan85Encoding, Yan85VM
 
 pwn.context.os = "linux"

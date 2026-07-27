@@ -1,6 +1,5 @@
-import struct
 import re
-
+import struct
 
 LEN_COLOR_ESC = 24
 ESCAPED_PIXEL = re.compile(

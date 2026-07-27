@@ -1,4 +1,4 @@
-from pwn import process, log
+from pwn import log, process
 
 
 def ctf():

@@ -1,7 +1,7 @@
 import re
 import sys
-import pwn
 
+import pwn
 
 pwn.context.arch = "amd64"
 pwn.context.os = "linux"
@@ -22,9 +22,9 @@ def tee[T: pwn.tube](process: T) -> T:
 
 
 def find_challenge(search_path="/challenge"):
-    from pathlib import Path
     import os
     import stat
+    from pathlib import Path
 
     xs = [
         str(f.absolute())

@@ -12,9 +12,8 @@ from scapy.all import (
     sendp,
     sniff,
 )
-from scapy.layers.l2 import getmacbyip, Ether, ARP
 from scapy.layers.inet import IP, TCP
-
+from scapy.layers.l2 import ARP, Ether, getmacbyip
 
 # ---------------------------------------------------------
 # Network Configuration

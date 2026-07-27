@@ -1,7 +1,8 @@
 import re
-import sys
-from pwn import process, log
+
 from Crypto.Util.strxor import strxor
+from pwn import log, process
+
 
 def ctf():
     p = process('/challenge/run', level='debug')

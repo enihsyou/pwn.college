@@ -1,8 +1,9 @@
 # Level5 1
-import pwn
+import ctypes
 import os
 import tempfile
-import ctypes
+
+import pwn
 from dojotool import find_challenge
 
 

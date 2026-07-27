@@ -1,12 +1,13 @@
 import os
 import re
 import sys
-import pwn
 import time
-import requests
 import urllib.parse
+
 import Crypto.Cipher.AES
 import Crypto.Util.Padding
+import pwn
+import requests
 import scapy.layers.tls.crypto.groups
 
 API = "http://10.0.0.1:80"
@@ -130,7 +131,7 @@ def reveal_sharon_username():
 
     dh_s = pow(dh_B, dh_a, mod=DH_p)
     aes_key = dh_s.to_bytes(256, "big")[:16]
-    pwn.info(f"AES key derived from DHE exchange")
+    pwn.info("AES key derived from DHE exchange")
 
     cipher_send = Crypto.Cipher.AES.new(aes_key, Crypto.Cipher.AES.MODE_ECB)
     cipher_recv = Crypto.Cipher.AES.new(aes_key, Crypto.Cipher.AES.MODE_ECB)

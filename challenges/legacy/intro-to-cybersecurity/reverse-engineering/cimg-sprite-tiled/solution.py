@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 import re
+
 from cimgparse import (
     CIMGFile,
     Directive3DefineSprite,
     Directive4DrawSprite,
     Pixel,
 )
-
 
 LEN_COLOR_ESC = len(b"\x1b[38;2;255;255;255m.\x1b[0m")
 ESCAPED_PIXEL = re.compile(rb"\x1b\[38;2;(\d+);(\d+);(\d+)m(.)\x1b\[0m", re.DOTALL)

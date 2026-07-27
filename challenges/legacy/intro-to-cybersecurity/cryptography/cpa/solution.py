@@ -1,5 +1,6 @@
-from pwn import process, log, context, run_in_new_terminal
 from string import printable, whitespace
+
+from pwn import context, log, process, run_in_new_terminal
 
 
 def tee(process, logfile='/tmp/challenge.log'):

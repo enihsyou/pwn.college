@@ -1,7 +1,8 @@
 import os
-import sys
-import pwn
 import pathlib
+import sys
+
+import pwn
 
 pwn.context.arch = "amd64"
 pwn.context.os = "linux"
@@ -30,8 +31,8 @@ def hack(io: pwn.process):
 def ctf():
 
     def find_challenge(search_path="/challenge"):
-        from pathlib import Path
         import stat
+        from pathlib import Path
 
         xs = [
             str(f.absolute())

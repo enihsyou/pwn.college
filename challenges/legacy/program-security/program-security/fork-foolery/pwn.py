@@ -1,6 +1,5 @@
 import pwn
 
-
 pwn.context.arch = "amd64"
 pwn.context.os = "linux"
 pwn.context.log_level = "warn"

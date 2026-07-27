@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+
 from cimgparse import CIMGFile, Directive4DrawSprite, parse_cimg
 
 

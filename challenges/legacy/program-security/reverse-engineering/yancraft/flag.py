@@ -1,6 +1,6 @@
 # Yancraft
-from yan85_asm import assemble
 import pwn
+from yan85_asm import assemble
 
 pwn.context.os = "linux"
 pwn.context.arch = "amd64"

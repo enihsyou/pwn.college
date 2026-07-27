@@ -1,7 +1,7 @@
-from pwn import args, process, read, write
-import struct
 import re
+import struct
 
+from pwn import args, process, read, write
 
 LEN_COLOR_ESC = 24
 ESCAPED_PIXEL = re.compile(

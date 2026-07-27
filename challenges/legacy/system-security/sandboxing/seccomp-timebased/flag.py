@@ -2,6 +2,7 @@
 import statistics
 import time
 from collections import Counter
+
 import pwn
 from dojotool import find_challenge
 

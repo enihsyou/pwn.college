@@ -1,5 +1,6 @@
-from pwn import process, log
 from string import printable, whitespace
+
+from pwn import log, process
 
 
 def ctf():

@@ -1,7 +1,6 @@
 # Overlapping Odyssey
 import pwn
-
-from dojotool import tee, find_challenge
+from dojotool import find_challenge, tee
 
 
 def one_round(io: pwn.process) -> None:

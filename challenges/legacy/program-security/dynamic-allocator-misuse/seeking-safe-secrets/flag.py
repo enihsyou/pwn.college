@@ -1,6 +1,6 @@
 # Seeking Safe Secrets
-from dojotool import tee, find_challenge
 import pwn
+from dojotool import find_challenge, tee
 
 pwn.context.update(arch="amd64", os="linux", terminal=["tmux", "new-window"])
 
