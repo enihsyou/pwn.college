@@ -21,9 +21,9 @@ def ctf() -> None:
             io.sendline(b"login")
             io.recvuntil(b"1")
 
-            logouts = 3
-            barrier = threading.Barrier(logouts)
-            threads = [threading.Thread(target=logout_thread, args=(barrier,)) for _ in range(logouts)]
+            threads = 3
+            barrier = threading.Barrier(threads)
+            threads = [threading.Thread(target=logout_thread, args=(barrier,)) for _ in range(threads)]
 
             for thread in threads:
                 thread.start()
