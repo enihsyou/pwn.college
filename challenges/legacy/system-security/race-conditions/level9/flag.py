@@ -1,4 +1,4 @@
-# Level9 1
+# Level9
 import threading
 
 import pwn

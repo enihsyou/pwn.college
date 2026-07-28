@@ -1,4 +1,4 @@
-# Level7 1
+# Level7
 import pwn
 from dojotool import find_challenge
 
