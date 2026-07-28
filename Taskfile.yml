@@ -25,73 +25,11 @@ tasks:
   init:
     desc: Initialize the dojo solution file from running challenge (extension=py|sh)
     summary: |
-      Usage: task init --extension=py
+      Usage: task init extension=py
     vars:
-      # This value cannot be obtained, hardcoded for now
-      DOJO: system-security
       extension: '{{default "py" .extension}}'
     cmds:
-      - |
-        hostname=$(ssh -q {{.DOJO_HOST}} hostname)
-        dojo="{{.DOJO}}"
-        extension="{{.extension}}"
-        module="${hostname%%~*}"
-        challenge="${hostname##*~}"
-        challenge="${challenge%-easy}"
-        challenge="${challenge%-hard}"
-        # -b will make sed output LF instead of CRLF on Windows
-        title=$(echo "${challenge}" | sed -bE 's/-/ /g; s/\b[a-z]/\u&/g')
-        printf "Init challenge: %s\n" "${title}"
-
-        folder="challenges/legacy/${dojo}/${module}/${challenge}"
-        flag_file="${folder}/flag.${extension}"
-
-        case "${extension}" in
-          py|sh)
-            ;;
-          *)
-            printf "Unsupported extension: %s\\n" "${extension}" >&2
-            exit 1
-            ;;
-        esac
-
-        write_python_template() {
-          cat >> "$1" << 'EOF'
-        import pwn
-        from dojotool import find_challenge, tee
-
-
-        def one_round(io: pwn.process) -> None:
-            pass
-
-
-        def ctf() -> None:
-            root_bin = find_challenge()
-            with pwn.process(root_bin, raw=True, level="error") as io:
-                tee(io)
-                try:
-                    one_round(io)
-                    io.recvrepeat()
-                except Exception:
-                    io.recvrepeat(0.5)
-                    raise
-
-
-        if __name__ == "__main__":
-            ctf()
-        EOF
-        }
-
-        create_solution_file() {
-          mkdir -p "${folder}"
-          printf "# %s\\n" "${title}" > "${flag_file}"
-          [ "${extension}" = "py" ] && write_python_template "${flag_file}"
-        }
-
-        if [ ! -f "${flag_file}" ]; then
-          create_solution_file
-        fi
-        printf "Challenge at: %s\n" "${flag_file}"
+      - uv run python scripts/task-init.py "{{.extension}}"
 
   pull:
     desc: Download challenge file to local
