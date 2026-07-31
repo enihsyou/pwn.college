@@ -20,7 +20,9 @@ tasks:
   sync:
     desc: Sync workspace/home/hacker -> ~ on {{.DOJO_HOST}}
     cmds:
-      - rsync -av -e "{{.RSYNC_SSH}}" "{{.HACKER_SRC}}/" "{{.DOJO_HOST}}:./"
+      - rsync -av -e "{{.RSYNC_SSH}}"
+        --exclude='__pycache__/' 
+        "{{.HACKER_SRC}}/" "{{.DOJO_HOST}}:./"
 
   init:
     desc: Initialize the dojo solution file from running challenge (extension=py|sh)

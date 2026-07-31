@@ -64,6 +64,45 @@ function withenv() {
     (cat runtime.env; printf "%s\0" "$@") | xargs -0 env -i
 }
 
+# Found one with fd in /nix/store
+export GHIDRA_HOME=/nix/store/k1baic8mns8adsvfgxhdsnwxc4i9kd7l-ghidra-11.4.2/lib/ghidra
+
+# Inspired from https://github.com/h4sh5/ghidra-headless-decompile
+ghidra_decompile() {
+    if (( $# != 1 )); then
+        echo "Usage: ghidra_decompile <input-file>" >&2
+        return 2
+    fi
+
+    local input
+    input="$(realpath -- "$1")" || return
+    bname="$(basename -- "$input")" || return
+
+    if [[ ! -r "$input" ]]; then
+        echo "ghidra_decompile: cannot read: $input" >&2
+        return 1
+    fi
+
+    local script_dir="$HOME/.config/ghidra/ghidra_scripts"
+    local output="$PWD/$bname.c"
+    local project_name="ghidra_decompile_${$}_${RANDOM}"
+
+    if [[ ! -r "$script_dir/Decompile.java" ]]; then
+        echo "ghidra_decompile: missing $script_dir/Decompile.java" >&2
+        return 1
+    fi
+
+    echo "Input:  $input"
+    echo "Output: $output"
+
+    "$GHIDRA_HOME/support/analyzeHeadless" \
+        /tmp "$project_name" \
+        -import "$input" \
+        -scriptPath "$script_dir" \
+        -postScript Decompile.java "$output" \
+        -deleteProject
+}
+
 export PATH="$PATH:./"
 
 # Forcefully enable user site packages, even if PYTHONNOUSERSITE is set by nix makeCWrapper. 

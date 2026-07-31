@@ -24,6 +24,7 @@ def build_pwn_college_flag(user_id, challenge_id, hmac=""):
     import base64
     import json
 
+    # https://github.com/pwncollege/dojo/blob/625883b7e2ff011a93d1335b575527672d7d15a4/dojo_plugin/utils/__init__.py#L72
     sig = hmac.encode() if isinstance(hmac, str) else bytes(hmac)
     payload_json = json.dumps([user_id, challenge_id], separators=(",", ":")).encode()
     payload_b64 = base64.urlsafe_b64encode(payload_json).rstrip(b"=")
