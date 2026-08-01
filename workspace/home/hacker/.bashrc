@@ -68,13 +68,13 @@ function withenv() {
 export GHIDRA_HOME=/nix/store/k1baic8mns8adsvfgxhdsnwxc4i9kd7l-ghidra-11.4.2/lib/ghidra
 
 # Inspired from https://github.com/h4sh5/ghidra-headless-decompile
-ghidra_decompile() {
+ghdecompile() {
     if (( $# != 1 )); then
         echo "Usage: ghidra_decompile <input-file>" >&2
         return 2
     fi
 
-    local input
+    local input bname
     input="$(realpath -- "$1")" || return
     bname="$(basename -- "$input")" || return
 
@@ -83,24 +83,57 @@ ghidra_decompile() {
         return 1
     fi
 
+    local analyze_headless="$GHIDRA_HOME/support/analyzeHeadless"
     local script_dir="$HOME/.config/ghidra/ghidra_scripts"
+    local script_name="Decompile.java"
     local output="$PWD/$bname.c"
-    local project_name="ghidra_decompile_${$}_${RANDOM}"
 
-    if [[ ! -r "$script_dir/Decompile.java" ]]; then
-        echo "ghidra_decompile: missing $script_dir/Decompile.java" >&2
+    local project_dir="/tmp"
+    local project_name="$bname"
+    local project_gpr="$project_dir/$project_name.gpr"
+    local project_rep="$project_dir/$project_name.rep"
+
+    if [[ ! -x "$analyze_headless" ]]; then
+        echo "ghidra_decompile: missing or not executable: $analyze_headless" >&2
         return 1
     fi
 
-    echo "Input:  $input"
-    echo "Output: $output"
+    if [[ ! -r "$script_dir/$script_name" ]]; then
+        echo "ghidra_decompile: missing $script_dir/$script_name" >&2
+        return 1
+    fi
 
-    "$GHIDRA_HOME/support/analyzeHeadless" \
-        /tmp "$project_name" \
-        -import "$input" \
+    local -a mode_args
+
+    if [[ -f "$project_gpr" && -d "$project_rep" ]]; then
+        echo "Project: $project_gpr (reusing)"
+        mode_args=(
+            -process "$bname"
+            -noanalysis
+            -readOnly
+        )
+    elif [[ -e "$project_gpr" || -e "$project_rep" ]]; then
+        echo "ghidra_decompile: incomplete project in /tmp:" >&2
+        echo "  $project_gpr" >&2
+        echo "  $project_rep" >&2
+        echo "Remove both files and try again." >&2
+        return 1
+    else
+        echo "Project: $project_gpr (creating)"
+        mode_args=(
+            -import "$input"
+        )
+    fi
+
+    echo "Input:   $input"
+    echo "Output:  $output"
+    echo "Script:  $script_dir/$script_name"
+
+    "$analyze_headless" \
+        "$project_dir" "$project_name" \
+        "${mode_args[@]}" \
         -scriptPath "$script_dir" \
-        -postScript Decompile.java "$output" \
-        -deleteProject
+        -postScript "$script_name" "$output"
 }
 
 export PATH="$PATH:./"
