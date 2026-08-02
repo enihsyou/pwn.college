@@ -51,7 +51,7 @@ class ChangeWatcher:
         }
         self.notified = Event()
         self.lock = Lock()
-        self.mtime: dict[Path, int] = dict()
+        self.mtime: dict[Path, int] = {}
 
     def is_watched_file(self, path: Path) -> bool:
         """Determines if a given path is within the monitored scope."""
@@ -222,7 +222,7 @@ def file_uploader(ssh: pwn.ssh, args: Args):
         ssh.system(f"mkdir -p {shlex.quote(str(args.remote_root))}").wait()
 
     # when file is 'touch'ed without modification, skip upload and only restart
-    md5set: dict[Path, bytes] = dict()
+    md5set: dict[Path, bytes] = {}
 
     def upload_files(watcher: ChangeWatcher) -> None:
         """Uploads the specified set of files to the remote environment."""
@@ -328,9 +328,7 @@ def wait_for_redeploy(watcher: ChangeWatcher) -> object:
 def can_clear_screen() -> bool:
     if not sys.stdout.isatty():
         return False
-    if "PWNLIB_NOTERM" in os.environ:
-        return False
-    return True
+    return "PWNLIB_NOTERM" not in os.environ
 
 
 def deploy_loop(args: Args, watcher: ChangeWatcher) -> None:

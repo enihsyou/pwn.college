@@ -29,3 +29,14 @@ python dojo.py ./challenges/legacy/program-security/program-exploitation/return-
 ```
 
 Use forward slashes in challenge paths, including on Windows.
+
+---
+
+Alternatively, if you wish to run a solution script directly on the dojo by
+editing a file on the challenge host, make sure the
+`dojotool` module synced over by `task sync` is importable by extending
+`PYTHONPATH` accordingly:
+
+```bash
+PYTHONPATH=$(python -m site --user-site) python
+```
