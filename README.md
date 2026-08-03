@@ -11,6 +11,8 @@ The directory structure of the challenges keeps sync with [pwncollege/challenges
 >
 > - <https://writeups.kunull.net/pwn-college>
 > - <https://github.com/Lo4pca/NoobCTF/blob/main/%E7%AC%94%E8%AE%B0/Pwn/pwn.college.md>
+> - <https://lkliki.github.io/tags/PwnCollege/>
+> - <https://www.cubeyond.net/volume/1/>
 
 The [workspace](workspace) directory stores home‑directory configuration files intended to enhance the remote development workflow. For example, it includes scripts that allow retrieving the GUI desktop clipboard over SSH.
 
