@@ -36,6 +36,7 @@ public class Decompile extends GhidraScript {
         int processed;
         int succeeded;
         int failed;
+        int skipped;
         int inlinedStrings;
         int inlinedKernelLogStrings;
     }
@@ -69,6 +70,7 @@ public class Decompile extends GhidraScript {
 
             Summary summary = writeFunctions(decompiler, output);
             println("Decompiled " + summary.succeeded + " of " + summary.processed + " internal functions");
+            println("Skipped " + summary.skipped + " empty/bad function(s)");
             println("Inlined " + summary.inlinedStrings + " string reference(s), including " +
                 summary.inlinedKernelLogStrings + " kernel log string(s)");
 
@@ -146,6 +148,11 @@ public class Decompile extends GhidraScript {
                     continue;
                 }
 
+                if (isEmptyOrBadFunction(code)) {
+                    summary.skipped++;
+                    continue;
+                }
+
                 if (!firstFunction) {
                     writer.write("\n\n");
                 }
@@ -172,6 +179,29 @@ public class Decompile extends GhidraScript {
         }
         String message = result.getErrorMessage();
         return message == null || message.isBlank() ? "decompilation did not complete" : message.strip();
+    }
+
+    /**
+     * Detects the typical "empty" / bad-instruction functions produced by Ghidra
+     * when control flow hits invalid data
+     */
+    private boolean isEmptyOrBadFunction(String code) {
+        if (code == null || code.isBlank()) {
+            return true;
+        }
+
+        // Primary marker: the decompiler inserts this when it truncates on bad bytes.
+        if (code.contains("halt_baddata()")) {
+            return true;
+        }
+
+        // Secondary markers from the warning comments.
+        if (code.contains("Control flow encountered bad instruction data") ||
+            code.contains("Bad instruction - Truncating control flow here")) {
+            return true;
+        }
+
+        return false;
     }
 
     private String inlineStringReferences(String code, Summary summary) {

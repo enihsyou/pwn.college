@@ -85,7 +85,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def read_hostname() -> str:
-    """Return the active hostname in the expected ``module~challenge`` form."""
+    """Return the active challenge hostname from the remote container."""
     result = subprocess.run(
         ["ssh", "-q", SSH_HOST, "hostname"],
         capture_output=True,
@@ -96,10 +96,17 @@ def read_hostname() -> str:
         detail = result.stderr.strip() or f"ssh exited with status {result.returncode}"
         raise RuntimeError(f"Could not read the challenge hostname: {detail}")
 
-    hostname = result.stdout.strip()
-    if hostname.count("~") != 1:
+    return result.stdout.strip()
+
+
+def parse_hostname(hostname: str) -> tuple[str, str]:
+    """Extract the module and challenge from a normal or practice hostname."""
+    parts = hostname.split("~")
+    if len(parts) == 3 and parts[0] == "practice":
+        parts = parts[1:]
+    if len(parts) != 2 or not all(parts):
         raise RuntimeError(f"Unexpected challenge hostname: {hostname!r}")
-    return hostname
+    return parts[0], parts[1]
 
 
 def read_directory_cache() -> tuple[str | None, list[PurePosixPath]]:
@@ -302,7 +309,7 @@ def main() -> int:
     args = parse_args()
     try:
         hostname = read_hostname()
-        module, challenge = hostname.split("~")
+        module, challenge = parse_hostname(hostname)
         directories = fetch_description_directories()
         # source_directory retains the exact upstream easy/hard variant.
         source_directory = find_challenge_directory(
