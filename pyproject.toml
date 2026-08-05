@@ -1,7 +1,7 @@
 [project]
 name = "pwn-college"
 version = "0.1.0"
-description = "My attempts to the pwn.college challenges]"
+description = "My attempts to the pwn.college challenges"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -22,6 +22,9 @@ dependencies = [
 [tool.uv]
 # this project is not for packaging.
 package = false
+
+[tool.uv.sources]
+pwntools = { git = "https://github.com/gallopsled/pwntools.git", rev = "dev" }
 
 [tool.pyright]
 # assign sys.platform to system challenge supposed to run.
