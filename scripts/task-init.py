@@ -8,8 +8,10 @@ repository.
 import argparse
 import json
 import re
+import shlex
 import subprocess
 import tempfile
+import time
 from pathlib import Path, PurePosixPath
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -18,20 +20,34 @@ from rich.console import Console
 
 # A recursive tree is large, but it is the only unauthenticated request needed
 # to discover a challenge when its dojo (an ancestor directory) is unknown.
-GITHUB_TREE_URL = (
-    "https://api.github.com/repos/pwncollege/challenges/git/trees/main?recursive=1"
-)
+GITHUB_TREE_URL = "https://api.github.com/repos/pwncollege/challenges/git/trees/main?recursive=1"
 # Cache only the filtered DESCRIPTION.md parents, not the complete Git tree.
 # tempfile selects the platform's system-managed temporary/cache directory.
-CACHE_FILE = (
-    Path(tempfile.gettempdir()) / "pwncollege-challenges-description-directories.json"
-)
+CACHE_FILE = Path(tempfile.gettempdir()) / "pwncollege-challenges-description-directories.json"
 # Increment this when the on-disk cache schema changes.
 CACHE_VERSION = 1
+# Repository metadata changes slowly; during this window the compact cache is
+# authoritative and no network request is made.
+CACHE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
 # All paths returned by GitHub are resolved relative to this checkout.
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 # OpenSSH configuration may provide authentication details for this host.
 SSH_HOST = "hacker@dojo.pwn.college"
+# Run discovery beside the challenge because /challenge is not mounted on the
+# local Windows machine. Failure to find one executable is non-fatal: most
+# hostnames can still be matched directly.
+REMOTE_CONTEXT_SCRIPT = """import json
+import socket
+from pathlib import Path
+
+from dojotool import find_challenge
+
+try:
+    challenge = Path(find_challenge()).name
+except FileNotFoundError:
+    challenge = None
+print(json.dumps({"hostname": socket.gethostname(), "challenge": challenge}))
+"""
 # A suffix is removed only when its counterpart exists beside the matched
 # challenge, preventing unrelated names that happen to end in "-0" or "-easy"
 # from being shortened.
@@ -84,19 +100,37 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def read_hostname() -> str:
-    """Return the active challenge hostname from the remote container."""
+class ChallengeNotFoundError(RuntimeError):
+    """Indicate that no repository directory matched a challenge name."""
+
+
+def read_remote_context() -> tuple[str, str | None]:
+    """Return the remote hostname and optional /challenge executable name."""
+    remote_command = (
+        "PYTHONPATH=/home/hacker/.local/lib/python3.13/site-packages "
+        f"python3 -c {shlex.quote(REMOTE_CONTEXT_SCRIPT)}"
+    )
     result = subprocess.run(
-        ["ssh", "-q", SSH_HOST, "hostname"],
+        ["ssh", "-q", SSH_HOST, remote_command],
         capture_output=True,
         check=False,
         text=True,
     )
     if result.returncode:
         detail = result.stderr.strip() or f"ssh exited with status {result.returncode}"
-        raise RuntimeError(f"Could not read the challenge hostname: {detail}")
+        raise RuntimeError(f"Could not inspect the running challenge: {detail}")
 
-    return result.stdout.strip()
+    try:
+        context = json.loads(result.stdout)
+        hostname = context["hostname"]
+        challenge = context.get("challenge")
+        if not isinstance(hostname, str) or not hostname:
+            raise TypeError
+        if challenge is not None and not isinstance(challenge, str):
+            raise TypeError
+    except (json.JSONDecodeError, KeyError, TypeError) as error:
+        raise RuntimeError("The remote challenge returned invalid metadata") from error
+    return hostname, challenge
 
 
 def parse_hostname(hostname: str) -> tuple[str, str]:
@@ -118,15 +152,30 @@ def read_directory_cache() -> tuple[str | None, list[PurePosixPath]]:
         raw_directories = payload["directories"]
         if not isinstance(raw_directories, list):
             return None, []
-        directories = [
-            PurePosixPath(path)
-            for path in raw_directories
-            if isinstance(path, str)
-        ]
+        directories = [PurePosixPath(path) for path in raw_directories if isinstance(path, str)]
         etag = payload.get("etag")
         return etag if isinstance(etag, str) else None, directories
     except (OSError, json.JSONDecodeError, KeyError, TypeError):
         return None, []
+
+
+def cache_is_fresh(directories: list[PurePosixPath]) -> bool:
+    """Accept a populated cache for seven days without contacting GitHub."""
+    if not directories:
+        return False
+    try:
+        age = time.time() - CACHE_FILE.stat().st_mtime
+    except OSError:
+        return False
+    return age <= CACHE_MAX_AGE_SECONDS
+
+
+def refresh_cache_age() -> None:
+    """Record successful ETag validation without rewriting cached contents."""
+    try:
+        CACHE_FILE.touch()
+    except OSError as error:
+        console.print(f"[yellow]Warning:[/] Could not refresh cache age: {error}")
 
 
 def write_directory_cache(
@@ -180,13 +229,16 @@ def extract_description_directories(payload: dict) -> list[PurePosixPath]:
 
 
 def fetch_description_directories() -> list[PurePosixPath]:
-    """Return current challenge directories with ETag and offline fallback."""
+    """Prefer a fresh cache, then validate stale data through GitHub's ETag."""
     cached_etag, cached_directories = read_directory_cache()
+    if cache_is_fresh(cached_directories):
+        return cached_directories
     try:
         payload, etag = request_repository_tree(cached_etag)
     except HTTPError as error:
         # urllib represents 304 as HTTPError even though it is a cache hit.
         if error.code == 304 and cached_directories:
+            refresh_cache_age()
             return cached_directories
         if cached_directories:
             console.print(
@@ -198,13 +250,10 @@ def fetch_description_directories() -> list[PurePosixPath]:
     except URLError as error:
         if cached_directories:
             console.print(
-                "[yellow]Warning:[/] GitHub is unavailable; "
-                "using cached challenge directories"
+                "[yellow]Warning:[/] GitHub is unavailable; using cached challenge directories"
             )
             return cached_directories
-        raise RuntimeError(
-            f"Could not reach the GitHub API: {error.reason}"
-        ) from error
+        raise RuntimeError(f"Could not reach the GitHub API: {error.reason}") from error
 
     directories = extract_description_directories(payload)
     write_directory_cache(etag, directories)
@@ -250,18 +299,33 @@ def find_challenge_directory(
             matches.append((score, directory))
 
     if not matches:
-        raise RuntimeError(f"No DESCRIPTION.md directory matches {module}~{challenge}")
+        raise ChallengeNotFoundError(f"No DESCRIPTION.md directory matches {module}~{challenge}")
 
     best_score = min(score for score, _ in matches)
-    best_matches = sorted(
-        directory for score, directory in matches if score == best_score
-    )
+    best_matches = sorted(directory for score, directory in matches if score == best_score)
     if len(best_matches) > 1:
         choices = "\n".join(f"  - {path.as_posix()}" for path in best_matches)
-        raise RuntimeError(
-            f"Multiple challenge directories match {module}~{challenge}:\n{choices}"
-        )
+        raise RuntimeError(f"Multiple challenge directories match {module}~{challenge}:\n{choices}")
     return best_matches[0]
+
+
+def resolve_challenge_directory(
+    directories: list[PurePosixPath],
+    module: str,
+    hostname_challenge: str,
+    executable_name: str | None,
+) -> PurePosixPath:
+    """Use the hostname first, falling back to the remote setuid executable."""
+    try:
+        return find_challenge_directory(
+            directories,
+            module,
+            hostname_challenge,
+        )
+    except ChallengeNotFoundError:
+        if not executable_name:
+            raise
+        return find_challenge_directory(directories, module, executable_name)
 
 
 def remove_confirmed_variant(
@@ -289,9 +353,13 @@ def solution_title(challenge_name: str) -> str:
     return challenge_name.replace("-", " ").title()
 
 
-def create_solution_file(directory: PurePosixPath, extension: str) -> Path:
+def create_solution_file(
+    directory: PurePosixPath,
+    extension: str,
+    repository_root: Path = REPOSITORY_ROOT,
+) -> Path:
     """Create the selected template without overwriting an existing solution."""
-    folder = REPOSITORY_ROOT.joinpath(*directory.parts)
+    folder = repository_root.joinpath(*directory.parts)
     flag_file = folder / f"flag.{extension}"
     if flag_file.exists():
         return flag_file
@@ -305,24 +373,40 @@ def create_solution_file(directory: PurePosixPath, extension: str) -> Path:
     return flag_file
 
 
+def initialize_solution(
+    hostname: str,
+    executable_name: str | None,
+    extension: str,
+    directories: list[PurePosixPath],
+    repository_root: Path = REPOSITORY_ROOT,
+) -> Path:
+    """Resolve challenge metadata and create its local solution file.
+
+    External discovery is deliberately outside this function so callers and
+    tests can supply the core inputs without SSH or GitHub access.
+    """
+    module, hostname_challenge = parse_hostname(hostname)
+    source_directory = resolve_challenge_directory(
+        directories,
+        module,
+        hostname_challenge,
+        executable_name,
+    )
+    solution_directory = remove_confirmed_variant(source_directory, directories)
+    return create_solution_file(solution_directory, extension, repository_root)
+
+
 def main() -> int:
     args = parse_args()
     try:
-        hostname = read_hostname()
-        module, challenge = parse_hostname(hostname)
+        hostname, executable_name = read_remote_context()
         directories = fetch_description_directories()
-        # source_directory retains the exact upstream easy/hard variant.
-        source_directory = find_challenge_directory(
-            directories,
-            module,
-            challenge,
-        )
-        # solution_directory may merge a confirmed pair into one local folder.
-        solution_directory = remove_confirmed_variant(
-            source_directory,
+        flag_file = initialize_solution(
+            hostname,
+            executable_name,
+            args.extension,
             directories,
         )
-        flag_file = create_solution_file(solution_directory, args.extension)
     except RuntimeError as error:
         console.print(f"[bold red]Error:[/] {error}")
         return 1
