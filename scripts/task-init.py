@@ -477,17 +477,11 @@ def write_module_cache(
 
 
 def _local_challenge_id(challenge_id: str, challenge_ids: set[str]) -> str:
-    """Preserve the old paired-variant folder merge only when API proves it."""
-    for suffix, counterpart_suffix in (
-        ("-0", "-1"),
-        ("-1", "-0"),
-        ("-easy", "-hard"),
-        ("-hard", "-easy"),
-    ):
-        if challenge_id.endswith(suffix):
-            base = challenge_id[: -len(suffix)]
-            if f"{base}{counterpart_suffix}" in challenge_ids:
-                return base
+    """Return the exact API ID used as the local directory name.
+
+    ``challenge_ids`` remains an argument for source compatibility with
+    callers of the former paired-variant helper; it is intentionally ignored.
+    """
     return challenge_id
 
 
@@ -549,14 +543,16 @@ def resolve_challenge_metadata(
         "name",
         matching_challenges[0].path,
     )
-    challenge_ids = _challenge_ids(module)
     return ChallengeMetadata(
         dojo_id,
         module_id,
         challenge_id,
         module_name,
         challenge_name,
-        _local_challenge_id(challenge_id, challenge_ids),
+        # Paths use the exact API challenge ID.  In particular, do not merge
+        # paired ``-0``/``-1`` challenges: each ID identifies a distinct
+        # challenge and therefore gets its own directory.
+        challenge_id,
     )
 
 
@@ -584,7 +580,6 @@ def create_solution_file(
     folder = (
         repository_root
         / "challenges"
-        / "legacy"
         / metadata.dojo_id
         / metadata.module_id
         / metadata.local_challenge_id

@@ -88,7 +88,7 @@ class TaskInitTests(unittest.TestCase):
         self.assertEqual(metadata.module_name, "Race Conditions")
         self.assertEqual(metadata.challenge_name, "level11.1")
         self.assertEqual(metadata.challenge_id, "level-11-1")
-        self.assertEqual(metadata.local_challenge_id, "level-11")
+        self.assertEqual(metadata.local_challenge_id, "level-11-1")
 
     def test_id_matching_does_not_use_old_normalization(self) -> None:
         with self.assertRaises(task_init.ApiError) as raised:
@@ -119,10 +119,9 @@ class TaskInitTests(unittest.TestCase):
                 flag_file,
                 Path(temporary_directory)
                 / "challenges"
-                / "legacy"
                 / "system-security"
                 / "race-conditions"
-                / "level-11"
+                / "level-11-1"
                 / "flag.py",
             )
             lines = flag_file.read_text(encoding="utf-8").splitlines()
@@ -148,10 +147,9 @@ class TaskInitTests(unittest.TestCase):
             target = (
                 Path(temporary_directory)
                 / "challenges"
-                / "legacy"
                 / "system-security"
                 / "race-conditions"
-                / "level-11"
+                / "level-11-1"
             )
             target.mkdir(parents=True)
             existing = target / "flag.py"

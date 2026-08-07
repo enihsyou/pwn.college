@@ -102,7 +102,7 @@ GET /docker --------------> dojo_id, module_id, challenge_id
 GET /dojos/{dojo}/modules -> 精确 ID 匹配 module.name/challenge.name
        |
        v
-challenges/legacy/{dojo}/{module_id}/{local_challenge_id}/flag.{py|sh}
+challenges/{dojo}/{module_id}/{challenge_id}/flag.{py|sh}
 ```
 
 新文件的前两行固定为（随后才接模板内容）：
@@ -112,12 +112,16 @@ challenges/legacy/{dojo}/{module_id}/{local_challenge_id}/flag.{py|sh}
 # https://pwn.college/{dojo}/{module_id}/{challenge_id}
 ```
 
-其中 URL 永远使用 API 返回的精确 challenge ID。`race-conditions`、`kernel-security`
-和 `system-exploitation` 的模块列表中存在成对的 `-0`/`-1` challenge ID；由于 API
-列表能可靠证明对应项存在，脚本保留原有的成对变体归并，把这两项放在共享的
-`{challenge_id 去掉 -0/-1}` 本地目录。URL 和头部仍保留实际的 `-0` 或 `-1`。没有对应项的
-ID（例如 `speculative-execution` 的 `level7-1`）不会被归并。若 `flag.{py|sh}` 已存在，
-脚本直接保留它，不覆盖内容。
+URL 和目录名都使用 API 返回的精确 challenge ID。成对的 `-0`/`-1` challenge
+各自拥有独立目录，不再合并；若 `flag.{py|sh}` 已存在，脚本直接保留它，不覆盖内容。
+
+## Legacy 路径迁移
+
+一次性脚本 [`scripts/migrate_challenge_paths.py`](../scripts/migrate_challenge_paths.py)
+直接读取每个 `challenges/legacy/{dojo}` 的 modules API 响应，默认只输出迁移计划；
+确认计划后使用 `python scripts/migrate_challenge_paths.py --apply` 执行。它只移动目标
+不存在且能由精确 API ID、API 显示名或文件头 URL 唯一确认的目录；`-0`/`-1` 旧合并目录
+和其他冲突、无法映射项会原地保留并报告。
 
 ## 错误响应与排查
 

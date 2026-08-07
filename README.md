@@ -24,9 +24,8 @@ Use `task init` after starting a challenge to initialize a local solution templa
 from the running challenge. The task-init script queries the pwn.college API for
 the active dojo/module/challenge and then resolves the module and challenge names
 from that dojo's API module list. It writes under
-`challenges/legacy/{dojo}/{module_id}/{challenge_id}` (paired `-0`/`-1` IDs,
-or an API-confirmed `-easy`/`-hard` pair, share the existing base directory)
-and preserves existing files.
+`challenges/{dojo}/{module_id}/{challenge_id}` using the exact API IDs and
+preserves existing files.
 Task loads `DOJO_ACCESS_TOKEN` from the ignored `.env` file; the same variable
 can be exported when invoking `uv run python scripts/task-init.py` directly.
 
@@ -39,7 +38,7 @@ If the solution needs additional files from the local `workspace/` tree, use
 Pass the solution script to `dojo.py` to upload and run it on the dojo:
 
 ```text
-python dojo.py ./challenges/legacy/program-security/program-exploitation/return-to-yanland/flag.py
+python dojo.py ./challenges/intro-to-cybersecurity/cryptography/cpa/solution.py
 ```
 
 Use forward slashes in challenge paths, including on Windows.
