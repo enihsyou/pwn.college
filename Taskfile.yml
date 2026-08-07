@@ -8,6 +8,10 @@
 
 version: "3"
 
+# Task loads the local token into the environment for scripts/task-init.py;
+# the token itself remains in the ignored .env file rather than this file.
+dotenv: [".env"]
+
 vars:
   DOJO_HOST: hacker@dojo.pwn.college
   HACKER_SRC: workspace/home/hacker
@@ -25,7 +29,7 @@ tasks:
         "{{.HACKER_SRC}}/" "{{.DOJO_HOST}}:./"
 
   init:
-    desc: Initialize the dojo solution file from running challenge (extension=py|sh)
+    desc: Initialize a solution from the running challenge via the pwn.college API (extension=py|sh)
     summary: |
       Usage: task init extension=py
     vars:

@@ -1,64 +1,34 @@
-"""Create a local solution path from the active pwn.college challenge hostname.
+"""Create a local solution for the currently running pwn.college challenge.
 
-The hostname identifies only the module and challenge. The missing dojo path is
-recovered from DESCRIPTION.md locations in the public pwncollege/challenges
-repository.
+The pwn.college API is the source of truth for both the running challenge and
+its human-readable names. Keeping discovery here (rather than inferring it
+from machine metadata or a repository tree) makes the generated URL and local
+path refer to the same API IDs.
 """
 
 import argparse
+import hashlib
 import json
-import re
-import shlex
-import subprocess
+import os
 import tempfile
 import time
-from pathlib import Path, PurePosixPath
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from rich.console import Console
 
-# A recursive tree is large, but it is the only unauthenticated request needed
-# to discover a challenge when its dojo (an ancestor directory) is unknown.
-GITHUB_TREE_URL = "https://api.github.com/repos/pwncollege/challenges/git/trees/main?recursive=1"
-# Cache only the filtered DESCRIPTION.md parents, not the complete Git tree.
-# tempfile selects the platform's system-managed temporary/cache directory.
-CACHE_FILE = Path(tempfile.gettempdir()) / "pwncollege-challenges-description-directories.json"
-# Increment this when the on-disk cache schema changes.
-CACHE_VERSION = 1
-# Repository metadata changes slowly; during this window the compact cache is
-# authoritative and no network request is made.
-CACHE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
-# All paths returned by GitHub are resolved relative to this checkout.
+API_BASE_URL = "https://pwn.college/pwncollege_api/v1"
+ACCESS_TOKEN_VARIABLE = "DOJO_ACCESS_TOKEN"
+REQUEST_TIMEOUT_SECONDS = 30
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
-# OpenSSH configuration may provide authentication details for this host.
-SSH_HOST = "hacker@dojo.pwn.college"
-# Run discovery beside the challenge because /challenge is not mounted on the
-# local Windows machine. Failure to find one executable is non-fatal: most
-# hostnames can still be matched directly.
-REMOTE_CONTEXT_SCRIPT = """import json
-import socket
-from pathlib import Path
 
-from dojotool import find_challenge
-
-try:
-    challenge = Path(find_challenge()).name
-except FileNotFoundError:
-    challenge = None
-print(json.dumps({"hostname": socket.gethostname(), "challenge": challenge}))
-"""
-# A suffix is removed only when its counterpart exists beside the matched
-# challenge, preventing unrelated names that happen to end in "-0" or "-easy"
-# from being shortened.
-VARIANT_SUFFIXES = {
-    "-0": "-1",
-    "-1": "-0",
-    "-easy": "-hard",
-    "-hard": "-easy",
-}
-# Keep the generated Python solution consistent with the repository's existing
-# task-init template. Shell solutions intentionally receive only the title.
+# The Python template is intentionally small: challenge-specific interaction
+# belongs in one_round, while dojotool still handles the common I/O plumbing.
 PYTHON_TEMPLATE = """import pwn
 from dojotool import find_challenge, tee
 
@@ -86,6 +56,178 @@ if __name__ == "__main__":
 console = Console()
 
 
+class ApiError(RuntimeError):
+    """An actionable failure while querying the pwn.college API."""
+
+
+class ApiSchemaError(ApiError):
+    """The API returned JSON that does not match the expected schema."""
+
+
+class ApiTransportError(ApiError):
+    """The API could not be reached or returned an HTTP transport error."""
+
+
+class JsonObject:
+    """Small path-aware accessor for the JSON objects consumed by this script."""
+
+    def __init__(self, value: Any, path: str) -> None:
+        if not isinstance(value, Mapping):
+            raise ApiSchemaError(f"{path} must be a JSON object")
+        self.value = value
+        self.path = path
+
+    def _missing(self, key: str) -> ApiSchemaError:
+        return ApiSchemaError(f"{self.path}.{key} is missing")
+
+    def optional(self, key: str) -> Any:
+        return self.value.get(key)
+
+    def required(self, key: str) -> Any:
+        if key not in self.value:
+            raise self._missing(key)
+        return self.value[key]
+
+    def string(self, key: str) -> str:
+        value = self.required(key)
+        if not isinstance(value, str) or not value:
+            raise ApiSchemaError(f"{self.path}.{key} must be a non-empty string")
+        return value
+
+    def optional_string(self, key: str) -> str | None:
+        value = self.optional(key)
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ApiSchemaError(f"{self.path}.{key} must be a string or null")
+        return value
+
+    def boolean(self, key: str) -> bool:
+        value = self.required(key)
+        if not isinstance(value, bool):
+            raise ApiSchemaError(f"{self.path}.{key} must be a boolean")
+        return value
+
+    def integer(self, key: str) -> int:
+        value = self.required(key)
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise ApiSchemaError(f"{self.path}.{key} must be an integer")
+        return value
+
+    def list(self, key: str) -> list[Any]:
+        value = self.required(key)
+        if not isinstance(value, list):
+            raise ApiSchemaError(f"{self.path}.{key} must be a list")
+        return value
+
+    def object(self, key: str) -> "JsonObject":
+        return JsonObject(self.required(key), f"{self.path}.{key}")
+
+
+@dataclass(frozen=True)
+class JsonCacheEntry[T]:
+    """A validated cache value plus the metadata needed for revalidation."""
+
+    path: Path
+    value: T
+    etag: str | None
+
+
+class JsonFileCache[T]:
+    """Reusable versioned JSON-file cache with TTL and conditional metadata."""
+
+    def __init__(
+        self,
+        directory: Path,
+        namespace: str,
+        version: int,
+        ttl_seconds: int,
+        key_field: str,
+        key_to_filename: Callable[[str], str],
+        decode: Callable[[JsonObject], T],
+        encode: Callable[[T], Any],
+        label: str,
+    ) -> None:
+        self.directory = directory
+        self.namespace = namespace
+        self.version = version
+        self.ttl_seconds = ttl_seconds
+        self.key_field = key_field
+        self.key_to_filename = key_to_filename
+        self.decode = decode
+        self.encode = encode
+        self.label = label
+
+    def path_for(self, key: str) -> Path:
+        filename = f"{self.namespace}-{self.key_to_filename(key)}.json"
+        return self.directory / filename
+
+    def read(self, key: str) -> JsonCacheEntry[T] | None:
+        path = self.path_for(key)
+        try:
+            cached = JsonObject(
+                json.loads(path.read_text(encoding="utf-8")),
+                f"{self.label} cache",
+            )
+            if cached.integer("version") != self.version:
+                return None
+            if cached.string(self.key_field) != key:
+                return None
+            etag = cached.optional_string("etag")
+            if etag is not None and any(
+                character in etag for character in ("\r", "\n")
+            ):
+                return None
+            value = self.decode(cached.object("response"))
+        except (OSError, json.JSONDecodeError, ApiError, TypeError):
+            return None
+        return JsonCacheEntry(path=path, value=value, etag=etag)
+
+    def is_fresh(self, entry: JsonCacheEntry[T]) -> bool:
+        try:
+            age = time.time() - entry.path.stat().st_mtime
+        except OSError:
+            return False
+        return age <= self.ttl_seconds
+
+    def touch(self, entry: JsonCacheEntry[T]) -> None:
+        try:
+            entry.path.touch()
+        except OSError as error:
+            console.print(
+                f"[yellow]Warning:[/] Could not refresh {self.label} cache age: {error}"
+            )
+
+    def write(self, key: str, value: T, etag: str | None) -> None:
+        envelope = {
+            "version": self.version,
+            self.key_field: key,
+            "etag": etag,
+            "response": self.encode(value),
+        }
+        try:
+            self.path_for(key).write_text(
+                json.dumps(envelope, separators=(",", ":")),
+                encoding="utf-8",
+            )
+        except (OSError, TypeError) as error:
+            console.print(
+                f"[yellow]Warning:[/] Could not update {self.label} cache: {error}"
+            )
+
+
+@dataclass(frozen=True)
+class ChallengeMetadata:
+    """IDs used for paths/URLs and names used in the generated header."""
+
+    dojo_id: str
+    module_id: str
+    challenge_id: str
+    module_name: str
+    challenge_name: str
+    local_challenge_id: str
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Initialize a solution for the running pwn.college challenge."
@@ -100,314 +242,372 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-class ChallengeNotFoundError(RuntimeError):
-    """Indicate that no repository directory matched a challenge name."""
-
-
-def read_remote_context() -> tuple[str, str | None]:
-    """Return the remote hostname and optional /challenge executable name."""
-    remote_command = (
-        "PYTHONPATH=/home/hacker/.local/lib/python3.13/site-packages "
-        f"python3 -c {shlex.quote(REMOTE_CONTEXT_SCRIPT)}"
-    )
-    result = subprocess.run(
-        ["ssh", "-q", SSH_HOST, remote_command],
-        capture_output=True,
-        check=False,
-        text=True,
-    )
-    if result.returncode:
-        detail = result.stderr.strip() or f"ssh exited with status {result.returncode}"
-        raise RuntimeError(f"Could not inspect the running challenge: {detail}")
-
-    try:
-        context = json.loads(result.stdout)
-        hostname = context["hostname"]
-        challenge = context.get("challenge")
-        if not isinstance(hostname, str) or not hostname:
-            raise TypeError
-        if challenge is not None and not isinstance(challenge, str):
-            raise TypeError
-    except (json.JSONDecodeError, KeyError, TypeError) as error:
-        raise RuntimeError("The remote challenge returned invalid metadata") from error
-    return hostname, challenge
-
-
-def parse_hostname(hostname: str) -> tuple[str, str]:
-    """Extract the module and challenge from a normal or practice hostname."""
-    parts = hostname.split("~")
-    if len(parts) == 3 and parts[0] == "practice":
-        parts = parts[1:]
-    if len(parts) != 2 or not all(parts):
-        raise RuntimeError(f"Unexpected challenge hostname: {hostname!r}")
-    return parts[0], parts[1]
-
-
-def read_directory_cache() -> tuple[str | None, list[PurePosixPath]]:
-    """Load the ETag and filtered challenge directories from system cache."""
-    try:
-        payload = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
-        if payload.get("version") != CACHE_VERSION:
-            return None, []
-        raw_directories = payload["directories"]
-        if not isinstance(raw_directories, list):
-            return None, []
-        directories = [PurePosixPath(path) for path in raw_directories if isinstance(path, str)]
-        etag = payload.get("etag")
-        return etag if isinstance(etag, str) else None, directories
-    except (OSError, json.JSONDecodeError, KeyError, TypeError):
-        return None, []
-
-
-def cache_is_fresh(directories: list[PurePosixPath]) -> bool:
-    """Accept a populated cache for seven days without contacting GitHub."""
-    if not directories:
-        return False
-    try:
-        age = time.time() - CACHE_FILE.stat().st_mtime
-    except OSError:
-        return False
-    return age <= CACHE_MAX_AGE_SECONDS
-
-
-def refresh_cache_age() -> None:
-    """Record successful ETag validation without rewriting cached contents."""
-    try:
-        CACHE_FILE.touch()
-    except OSError as error:
-        console.print(f"[yellow]Warning:[/] Could not refresh cache age: {error}")
-
-
-def write_directory_cache(
-    etag: str | None,
-    directories: list[PurePosixPath],
-) -> None:
-    """Persist compact API results; cache failures must not block task init."""
-    payload = {
-        "version": CACHE_VERSION,
-        "etag": etag,
-        "directories": [path.as_posix() for path in directories],
-    }
-    try:
-        CACHE_FILE.write_text(
-            json.dumps(payload, separators=(",", ":")),
-            encoding="utf-8",
+def read_access_token(environ: Mapping[str, str] | None = None) -> str:
+    """Read the token without ever including its value in an error message."""
+    variables = os.environ if environ is None else environ
+    token = variables.get(ACCESS_TOKEN_VARIABLE, "").strip()
+    if not token:
+        raise ApiError(
+            f"{ACCESS_TOKEN_VARIABLE} is not set; export a pwn.college Access Token "
+            "before running task init"
         )
-    except OSError as error:
-        console.print(f"[yellow]Warning:[/] Could not update cache: {error}")
+    return token
 
 
-def request_repository_tree(etag: str | None) -> tuple[dict, str | None]:
-    """Fetch the tree, asking GitHub for an empty 304 response when unchanged."""
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "User-Agent": "pwn-college-task-init",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
-    if etag:
-        headers["If-None-Match"] = etag
-
-    request = Request(GITHUB_TREE_URL, headers=headers)
-    with urlopen(request, timeout=30) as response:
-        return json.load(response), response.headers.get("ETag")
+def _safe_detail(detail: Any, token: str) -> str:
+    """Bound and redact API-provided detail before displaying it to the user."""
+    if not isinstance(detail, str) or not detail.strip():
+        return "unspecified error"
+    text = detail.strip().replace(token, "<redacted>")
+    return text[:500]
 
 
-def extract_description_directories(payload: dict) -> list[PurePosixPath]:
-    """Reduce the Git tree to directories that define actual challenges."""
-    if payload.get("truncated"):
-        raise RuntimeError("GitHub returned a truncated repository tree")
+class PwnCollegeApi:
+    """Small JSON client with the exact authentication headers required here."""
 
-    directories = []
-    for entry in payload.get("tree", []):
-        path = entry.get("path", "")
-        if entry.get("type") != "blob" or not path.endswith("/DESCRIPTION.md"):
-            continue
-        directory = PurePosixPath(path).parent
-        if directory.parts and directory.parts[0] == "challenges":
-            directories.append(directory)
-    return directories
+    def __init__(self, token: str, base_url: str = API_BASE_URL) -> None:
+        self._token = token
+        self._base_url = base_url.rstrip("/")
 
-
-def fetch_description_directories() -> list[PurePosixPath]:
-    """Prefer a fresh cache, then validate stale data through GitHub's ETag."""
-    cached_etag, cached_directories = read_directory_cache()
-    if cache_is_fresh(cached_directories):
-        return cached_directories
-    try:
-        payload, etag = request_repository_tree(cached_etag)
-    except HTTPError as error:
-        # urllib represents 304 as HTTPError even though it is a cache hit.
-        if error.code == 304 and cached_directories:
-            refresh_cache_age()
-            return cached_directories
-        if cached_directories:
-            console.print(
-                f"[yellow]Warning:[/] GitHub returned HTTP {error.code}; "
-                "using cached challenge directories"
-            )
-            return cached_directories
-        raise RuntimeError(f"GitHub API returned HTTP {error.code}") from error
-    except URLError as error:
-        if cached_directories:
-            console.print(
-                "[yellow]Warning:[/] GitHub is unavailable; using cached challenge directories"
-            )
-            return cached_directories
-        raise RuntimeError(f"Could not reach the GitHub API: {error.reason}") from error
-
-    directories = extract_description_directories(payload)
-    write_directory_cache(etag, directories)
-    return directories
-
-
-def compact_name(value: str) -> str:
-    """Produce a loose comparison key for punctuation differences."""
-    return re.sub(r"[^a-z0-9]", "", value.casefold())
-
-
-def add_word_boundaries(value: str) -> str:
-    """Convert hostname forms such as level11-1 to repository form level-11-1."""
-    value = re.sub(r"(?<=[a-z])(?=\d)", "-", value.casefold())
-    return re.sub(r"(?<=\d)(?=[a-z])", "-", value)
-
-
-def match_score(actual: str, requested: str) -> int | None:
-    """Rank exact matches ahead of normalized and punctuation-free matches."""
-    if actual.casefold() == requested.casefold():
-        return 0
-    if actual.casefold() == add_word_boundaries(requested):
-        return 1
-    if compact_name(actual) == compact_name(requested):
-        return 2
-    return None
-
-
-def find_challenge_directory(
-    directories: list[PurePosixPath],
-    module: str,
-    challenge: str,
-) -> PurePosixPath:
-    """Find one unambiguous DESCRIPTION.md directory for the hostname."""
-    matches = []
-    for directory in directories:
-        if len(directory.parts) < 3:
-            continue
-        if compact_name(directory.parent.name) != compact_name(module):
-            continue
-        score = match_score(directory.name, challenge)
-        if score is not None:
-            matches.append((score, directory))
-
-    if not matches:
-        raise ChallengeNotFoundError(f"No DESCRIPTION.md directory matches {module}~{challenge}")
-
-    best_score = min(score for score, _ in matches)
-    best_matches = sorted(directory for score, directory in matches if score == best_score)
-    if len(best_matches) > 1:
-        choices = "\n".join(f"  - {path.as_posix()}" for path in best_matches)
-        raise RuntimeError(f"Multiple challenge directories match {module}~{challenge}:\n{choices}")
-    return best_matches[0]
-
-
-def resolve_challenge_directory(
-    directories: list[PurePosixPath],
-    module: str,
-    hostname_challenge: str,
-    executable_name: str | None,
-) -> PurePosixPath:
-    """Use the hostname first, falling back to the remote setuid executable."""
-    try:
-        return find_challenge_directory(
-            directories,
-            module,
-            hostname_challenge,
+    def _open_json(
+        self,
+        path: str,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> tuple[dict[str, Any] | None, Any]:
+        # Content-Type is required even for GET: CTFd's token middleware only
+        # parses the Authorization header for an exact JSON content type.
+        headers = {
+            "Authorization": f"Token {self._token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        if extra_headers:
+            headers.update(extra_headers)
+        conditional_request = any(
+            name.casefold() == "if-none-match" for name in headers
         )
-    except ChallengeNotFoundError:
-        if not executable_name:
+        request = Request(
+            f"{self._base_url}{path}",
+            method="GET",
+            headers=headers,
+        )
+        try:
+            with urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+                if conditional_request and getattr(response, "status", None) == 304:
+                    return None, response.headers
+                raw_body = response.read()
+                response_headers = response.headers
+        except HTTPError as error:
+            try:
+                if conditional_request and error.code == 304:
+                    return None, error.headers
+                raise ApiTransportError(
+                    f"pwn.college API returned HTTP {error.code} for {path}"
+                ) from error
+            finally:
+                error.close()
+        except (URLError, TimeoutError, OSError) as error:
+            reason = getattr(error, "reason", None) or str(error)
+            raise ApiTransportError(
+                f"Could not reach pwn.college API for {path}: {reason}"
+            ) from error
+
+        try:
+            payload = json.loads(raw_body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ApiSchemaError(
+                f"pwn.college API returned invalid JSON for {path}"
+            ) from error
+        response = JsonObject(payload, f"pwn.college API response for {path}")
+        success = response.boolean("success")
+        if not success:
+            detail = _safe_detail(response.optional("error"), self._token)
+            raise ApiError(f"pwn.college API reported failure for {path}: {detail}")
+        return dict(response.value), response_headers
+
+    def _request_json(self, path: str) -> dict[str, Any]:
+        payload, _ = self._open_json(path)
+        if payload is None:
+            raise ApiTransportError(f"pwn.college API returned HTTP 304 for {path}")
+        return payload
+
+    def current_challenge(self) -> dict[str, Any]:
+        """Return the API's current dojo/module/challenge context."""
+        payload = self._request_json("/docker")
+        response = JsonObject(payload, "pwn.college API response for /docker")
+        return {
+            field: response.string(field) for field in ("dojo", "module", "challenge")
+        }
+
+    def modules(self, dojo_id: str) -> dict[str, Any]:
+        """Return the module/challenge hierarchy for one dojo ID."""
+        encoded_dojo = quote(dojo_id, safe="")
+        path = f"/dojos/{encoded_dojo}/modules"
+        cache = read_module_cache(dojo_id)
+        if cache and module_cache_is_fresh(cache):
+            return cache.value
+
+        extra_headers = {"If-None-Match": cache.etag} if cache and cache.etag else None
+        try:
+            payload, response_headers = self._open_json(
+                path,
+                extra_headers,
+            )
+        except ApiTransportError as error:
+            if cache:
+                console.print(
+                    f"[yellow]Warning:[/] {error}; using cached module response"
+                )
+                return cache.value
             raise
-        return find_challenge_directory(directories, module, executable_name)
+
+        if payload is None:
+            if cache:
+                refresh_module_cache_age(cache)
+                return cache.value
+            raise ApiTransportError(f"pwn.college API returned HTTP 304 for {path}")
+
+        _validate_modules_payload(payload)
+        etag = response_headers.get("ETag") if response_headers else None
+        write_module_cache(dojo_id, payload, etag)
+        return payload
 
 
-def remove_confirmed_variant(
-    directory: PurePosixPath,
-    directories: list[PurePosixPath],
-) -> PurePosixPath:
-    """Collapse a confirmed easy/hard pair into one local solution directory."""
-    sibling_names = {
-        candidate.name.casefold()
-        for candidate in directories
-        if candidate.parent == directory.parent
-    }
-    name = directory.name
-    lower_name = name.casefold()
-    for suffix, counterpart in VARIANT_SUFFIXES.items():
-        if not lower_name.endswith(suffix):
-            continue
-        base_name = name[: -len(suffix)]
-        if f"{base_name}{counterpart}".casefold() in sibling_names:
-            return directory.with_name(base_name)
-    return directory
+def _path_identifier(value: Any, field: str, context: str) -> str:
+    """Apply only the path-safety checks needed before joining local paths."""
+    if not isinstance(value, str) or not value:
+        raise ApiSchemaError(f"{context}.{field} must be a non-empty string")
+    if value in {".", ".."} or any(separator in value for separator in ("/", "\\")):
+        raise ApiSchemaError(f"{context}.{field} is not a safe path identifier")
+    return value
 
 
-def solution_title(challenge_name: str) -> str:
-    return challenge_name.replace("-", " ").title()
+def _header_text(value: Any, field: str, context: str) -> str:
+    """Reject values that could inject lines into generated provenance headers."""
+    if not isinstance(value, str) or not value:
+        raise ApiSchemaError(f"{context}.{field} must be a non-empty string")
+    if any(character in value for character in ("\x00", "\r", "\n")):
+        raise ApiSchemaError(f"{context}.{field} contains an invalid line break")
+    return value
+
+
+def _challenge_ids(module: JsonObject) -> set[str]:
+    raw_challenges = module.list("challenges")
+    ids: set[str] = set()
+    for index, challenge in enumerate(raw_challenges):
+        challenge_object = JsonObject(
+            challenge,
+            f"{module.path}.challenges[{index}]",
+        )
+        challenge_id = challenge_object.string("id")
+        _header_text(
+            challenge_object.string("name"),
+            "name",
+            challenge_object.path,
+        )
+        if challenge_id in ids:
+            raise ApiSchemaError(
+                f"{module.path} contains duplicate challenge ID {challenge_id!r}"
+            )
+        ids.add(challenge_id)
+    return ids
+
+
+def _validate_modules_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate the complete module response before using or caching it."""
+    response = JsonObject(payload, "modules response")
+    success = response.boolean("success")
+    if not success:
+        raise ApiError("modules response reported success=false")
+    raw_modules = response.list("modules")
+
+    module_ids: set[str] = set()
+    for index, module in enumerate(raw_modules):
+        module_object = JsonObject(module, f"modules[{index}]")
+        module_id = module_object.string("id")
+        _header_text(
+            module_object.string("name"),
+            "name",
+            module_object.path,
+        )
+        _challenge_ids(module_object)
+        if module_id in module_ids:
+            raise ApiSchemaError(
+                f"modules response contains duplicate module ID {module_id!r}"
+            )
+        module_ids.add(module_id)
+    return dict(response.value)
+
+
+_module_cache = JsonFileCache[dict[str, Any]](
+    directory=Path(tempfile.gettempdir()),
+    namespace="pwncollege-modules",
+    version=1,
+    ttl_seconds=7 * 24 * 60 * 60,
+    key_field="dojo",
+    key_to_filename=lambda dojo_id: hashlib.sha256(dojo_id.encode("utf-8")).hexdigest(),
+    decode=lambda response: _validate_modules_payload(response.value),
+    encode=lambda payload: payload,
+    label="module",
+)
+
+
+def module_cache_path(dojo_id: str) -> Path:
+    return _module_cache.path_for(dojo_id)
+
+
+def read_module_cache(dojo_id: str) -> JsonCacheEntry[dict[str, Any]] | None:
+    return _module_cache.read(dojo_id)
+
+
+def module_cache_is_fresh(cache: JsonCacheEntry[dict[str, Any]]) -> bool:
+    return _module_cache.is_fresh(cache)
+
+
+def refresh_module_cache_age(cache: JsonCacheEntry[dict[str, Any]]) -> None:
+    _module_cache.touch(cache)
+
+
+def write_module_cache(
+    dojo_id: str,
+    payload: dict[str, Any],
+    etag: str | None,
+) -> None:
+    _module_cache.write(dojo_id, payload, etag)
+
+
+def _local_challenge_id(challenge_id: str, challenge_ids: set[str]) -> str:
+    """Preserve the old paired-variant folder merge only when API proves it."""
+    for suffix, counterpart_suffix in (
+        ("-0", "-1"),
+        ("-1", "-0"),
+        ("-easy", "-hard"),
+        ("-hard", "-easy"),
+    ):
+        if challenge_id.endswith(suffix):
+            base = challenge_id[: -len(suffix)]
+            if f"{base}{counterpart_suffix}" in challenge_ids:
+                return base
+    return challenge_id
+
+
+def resolve_challenge_metadata(
+    context: Mapping[str, Any], modules_payload: Mapping[str, Any]
+) -> ChallengeMetadata:
+    """Match IDs exactly, then derive names and an optional merged local ID."""
+    context_object = JsonObject(context, "docker response")
+    dojo_id = _path_identifier(
+        context_object.string("dojo"), "dojo", context_object.path
+    )
+    module_id = _path_identifier(
+        context_object.string("module"), "module", context_object.path
+    )
+    challenge_id = _path_identifier(
+        context_object.string("challenge"), "challenge", context_object.path
+    )
+
+    response = JsonObject(
+        _validate_modules_payload(modules_payload),
+        "modules response",
+    )
+    raw_modules = response.list("modules")
+
+    matching_modules: list[JsonObject] = []
+    for index, module in enumerate(raw_modules):
+        module_object = JsonObject(module, f"modules[{index}]")
+        current_module_id = module_object.string("id")
+        if current_module_id == module_id:
+            matching_modules.append(module_object)
+
+    if not matching_modules:
+        raise ApiError(f"Module ID {module_id!r} was not found in dojo {dojo_id!r}")
+    if len(matching_modules) != 1:
+        raise ApiSchemaError(
+            f"modules response contains duplicate module ID {module_id!r}"
+        )
+    module = matching_modules[0]
+    module_name = _header_text(module.string("name"), "name", module.path)
+    matching_challenges: list[JsonObject] = []
+    for index, challenge in enumerate(module.list("challenges")):
+        challenge_object = JsonObject(
+            challenge,
+            f"{module.path}.challenges[{index}]",
+        )
+        if challenge_object.string("id") == challenge_id:
+            matching_challenges.append(challenge_object)
+    if not matching_challenges:
+        raise ApiError(
+            f"Challenge ID {challenge_id!r} was not found in module {module_id!r} "
+            f"of dojo {dojo_id!r}"
+        )
+    if len(matching_challenges) != 1:
+        raise ApiSchemaError(
+            f"module {module_id!r} contains duplicate challenge ID {challenge_id!r}"
+        )
+    challenge_name = _header_text(
+        matching_challenges[0].string("name"),
+        "name",
+        matching_challenges[0].path,
+    )
+    challenge_ids = _challenge_ids(module)
+    return ChallengeMetadata(
+        dojo_id,
+        module_id,
+        challenge_id,
+        module_name,
+        challenge_name,
+        _local_challenge_id(challenge_id, challenge_ids),
+    )
+
+
+def render_solution(metadata: ChallengeMetadata, extension: str) -> str:
+    """Render the required two-line provenance header followed by the template."""
+    header = (
+        f"# {metadata.module_name} - {metadata.challenge_name}\n"
+        f"# https://pwn.college/{metadata.dojo_id}/{metadata.module_id}/"
+        f"{metadata.challenge_id}\n\n"
+    )
+    return header + (PYTHON_TEMPLATE if extension == "py" else "")
 
 
 def create_solution_file(
-    directory: PurePosixPath,
+    metadata: ChallengeMetadata,
     extension: str,
     repository_root: Path = REPOSITORY_ROOT,
 ) -> Path:
-    """Create the selected template without overwriting an existing solution."""
-    folder = repository_root.joinpath(*directory.parts)
+    """Create the API-ID path without overwriting an existing solution."""
+    _path_identifier(metadata.dojo_id, "dojo", "challenge metadata")
+    _path_identifier(metadata.module_id, "module", "challenge metadata")
+    _path_identifier(metadata.local_challenge_id, "challenge", "challenge metadata")
+    _header_text(metadata.module_name, "module name", "challenge metadata")
+    _header_text(metadata.challenge_name, "challenge name", "challenge metadata")
+    folder = (
+        repository_root
+        / "challenges"
+        / "legacy"
+        / metadata.dojo_id
+        / metadata.module_id
+        / metadata.local_challenge_id
+    )
     flag_file = folder / f"flag.{extension}"
     if flag_file.exists():
         return flag_file
-
     folder.mkdir(parents=True, exist_ok=True)
-    title = solution_title(directory.name)
-    body = f"# {title}\n"
-    if extension == "py":
-        body += PYTHON_TEMPLATE
-    flag_file.write_text(body, encoding="utf-8", newline="\n")
-    return flag_file
-
-
-def initialize_solution(
-    hostname: str,
-    executable_name: str | None,
-    extension: str,
-    directories: list[PurePosixPath],
-    repository_root: Path = REPOSITORY_ROOT,
-) -> Path:
-    """Resolve challenge metadata and create its local solution file.
-
-    External discovery is deliberately outside this function so callers and
-    tests can supply the core inputs without SSH or GitHub access.
-    """
-    module, hostname_challenge = parse_hostname(hostname)
-    source_directory = resolve_challenge_directory(
-        directories,
-        module,
-        hostname_challenge,
-        executable_name,
+    flag_file.write_text(
+        render_solution(metadata, extension), encoding="utf-8", newline="\n"
     )
-    solution_directory = remove_confirmed_variant(source_directory, directories)
-    return create_solution_file(solution_directory, extension, repository_root)
+    return flag_file
 
 
 def main() -> int:
     args = parse_args()
     try:
-        hostname, executable_name = read_remote_context()
-        directories = fetch_description_directories()
-        flag_file = initialize_solution(
-            hostname,
-            executable_name,
-            args.extension,
-            directories,
-        )
-    except RuntimeError as error:
+        token = read_access_token()
+        api = PwnCollegeApi(token)
+        context = api.current_challenge()
+        metadata = resolve_challenge_metadata(context, api.modules(context["dojo"]))
+        flag_file = create_solution_file(metadata, args.extension)
+    except ApiError as error:
         console.print(f"[bold red]Error:[/] {error}")
         return 1
 
