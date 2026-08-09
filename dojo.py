@@ -237,10 +237,10 @@ def file_uploader(ssh: pwn.ssh, args: Args):
             ssh.upload(str(local_path.as_posix()), str(remote_path))
 
             # if file contains a shebang, make it executable to allow direct execution
-            with local_path.open("rb") as f:
-                first_line = f.readline()
-            if first_line.startswith(b"#!"):
-                ssh.system(f"chmod +x {shlex.quote(str(remote_path))}").wait()
+            # with local_path.open("rb") as f:
+            #     first_line = f.readline()
+            # if first_line.startswith(b"#!"):
+            #     ssh.system(f"chmod +x {shlex.quote(str(remote_path))}").wait()
 
     return upload_files
 

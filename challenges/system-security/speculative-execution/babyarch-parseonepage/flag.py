@@ -1,13 +1,13 @@
 #!/nix/store/cdaifv92znxy5ai4sawricjl0p5b9sgf-python3-3.13.11/bin/python3.13
 # Microarchitecture Exploitation - Baby Spectre 1
 # https://pwn.college/system-security/speculative-execution/babyarch-parseonepage
+import ctypes
+import os
+import subprocess
+import time
+
 
 def inside_challenge() -> None:
-    import ctypes
-    import os
-    import subprocess
-    import time
-
     SHM = 0x1337000
     index = ctypes.c_int.from_address(SHM + 32)
     timings = (ctypes.c_uint64 * 256).from_address(SHM + 0x1000)
@@ -41,9 +41,11 @@ def inside_challenge() -> None:
 
 
 def ctf() -> None:
+    # pwn can only be used outside of the challenge
     import pwn
     from dojotool import find_challenge, tee
 
+    os.chmod(__file__, 0o755)
     with pwn.process([find_challenge(), __file__], raw=True, level="error") as io:
         tee(io)
         io.recvrepeat()
@@ -57,4 +59,3 @@ if __name__ == "__main__":
         ctf()
     else:
         inside_challenge()
-

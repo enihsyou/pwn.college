@@ -22,7 +22,7 @@
 #     inject_mmap()
 #     |
 #     python 开始执行
-
+# 这个文件里只能使用标准库
 
 import ctypes
 
