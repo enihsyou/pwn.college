@@ -41,6 +41,18 @@ except tkinter.TclError:
 "
 }
 
+# Copies the contents of a file to the local clipboard over SSH using OSC 52.
+osc52copy() {
+    if [ "$#" -ne 1 ]; then
+        echo "Usage: osc52copy <file>" >&2
+        return 1
+    fi
+
+    printf '\033]52;c;'
+    base64 < "$1" | tr -d '\r\n'
+    printf '\a'
+}
+
 # Send request with nc but using curl syntax.
 # designed for 'Playing With Programs / Taking Web' section.
 function curlnc() {
