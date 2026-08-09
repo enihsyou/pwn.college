@@ -132,7 +132,7 @@ def tee[T: pwn.tube](process: T) -> T:
 
     def recv_raw(numb, *args, **kwargs):
         data = orig_recv_raw(numb, *args, **kwargs) or b""  # orig may return str('')
-        if data: # prevent spin block
+        if data:  # prevent spin block
             output.write(data)
             output.flush()
         return data
@@ -235,6 +235,12 @@ def file_uploader(ssh: pwn.ssh, args: Args):
                 continue
             md5set[local_path] = md5
             ssh.upload(str(local_path.as_posix()), str(remote_path))
+
+            # if file contains a shebang, make it executable to allow direct execution
+            with local_path.open("rb") as f:
+                first_line = f.readline()
+            if first_line.startswith(b"#!"):
+                ssh.system(f"chmod +x {shlex.quote(str(remote_path))}").wait()
 
     return upload_files
 
