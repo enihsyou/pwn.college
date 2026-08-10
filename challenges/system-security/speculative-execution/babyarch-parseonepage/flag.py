@@ -4,7 +4,6 @@
 import ctypes
 import os
 import site
-import subprocess
 import sys
 import time
 
@@ -13,7 +12,7 @@ site.addsitedir(
     "/nix/store/8rkdh1mj5w4ysz03j9n5xcdamcwrdwjd-python3-3.13.11-env/lib/python3.13/site-packages"
 )
 import pwn
-from dojotool import find_challenge, tee
+from dojotool import find_challenge, submit, tee
 
 
 def inside_challenge() -> None:
@@ -35,12 +34,9 @@ def inside_challenge() -> None:
             break
 
     flag = flag.decode()
-    print("FLAG:", flag)
     if "pwn.college" in flag:
-        try:
-            print(subprocess.check_output(["dojo", "submit", flag], text=True))
-        except subprocess.CalledProcessError as e:
-            print(e.output)
+        submit(flag)
+
 
     # 让父进程退出
     sem_post(SHM)
