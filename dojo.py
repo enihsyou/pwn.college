@@ -18,7 +18,8 @@ REMOTE_EXITED = object()
 REDEPLOY_REQUESTED = object()
 USER_STOPPED = object()
 
-USER_SITE_CACHE_TTL = 24 * 60 * 60
+# there is an ephemeral DOJO_AUTH_TOKEN in the cache, which is short-lived
+USER_SITE_CACHE_TTL = 4 * 60 * 60
 
 
 @dataclass(frozen=True)

