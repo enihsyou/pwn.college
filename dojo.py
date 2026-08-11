@@ -2,7 +2,6 @@ import argparse
 import os
 import shlex
 import sys
-import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -18,8 +17,41 @@ REMOTE_EXITED = object()
 REDEPLOY_REQUESTED = object()
 USER_STOPPED = object()
 
-# there is an ephemeral DOJO_AUTH_TOKEN in the cache, which is short-lived
-USER_SITE_CACHE_TTL = 4 * 60 * 60
+
+@dataclass(frozen=True)
+class Repr:
+    """Returns the literal string value in its repr for remote evaluation.
+
+    Used to smuggle a bare identifier into pwntools' execve wrapper script.
+    `repr(Repr("env"))` is the string `"env"`, which the wrapper splices as
+    `func(*("env",))` — i.e. it evaluates the name `env` in the wrapper's
+    own scope, giving us a reference to the wrapper's local dict.
+    """
+
+    value: str
+
+    def __repr__(self) -> str:
+        return self.value
+
+
+def inject_extra_env(env: dict[bytes, bytes]) -> None:
+    """Returns a preexec_fn that injects extra env before execve.
+
+    The returned function runs inside the remote child, with a reference
+    to the wrapper script's local `env` dict (passed via Repr("env")).
+    Whatever it writes there is what os.execve() will hand to the child.
+
+    pwntools serializes this inner function's source via inspect.getsource,
+    so it must be self-contained - no closure over outer-scope values,
+    only over the literals captured below.
+    """
+    # The dojo's `python` is a nix wrapper that hard-codes
+    # `PYTHONNOUSERSITE=true`, so user-installed packages at
+    # ~/.local/lib/pythonX.Y/site-packages (e.g. `dojotool`) are dropped
+    # from sys.path. Re-introduce the path via PYTHONPATH at execve time.
+    user_site = b"/home/hacker/.local/lib/python3.13/site-packages"
+    existing = env.get(b"PYTHONPATH", b"")
+    env[b"PYTHONPATH"] = user_site + (b":" + existing if existing else b"")
 
 
 @dataclass(frozen=True)
@@ -254,43 +286,12 @@ def interrupt_remote(ssh: pwn.ssh, io: pwn.tubes.ssh.ssh_process) -> None:
         ssh.system(f"kill -TERM {io.pid}").wait()
 
 
-# The dojo's `python` is a nix binary wrapper that hard-codes
-# `PYTHONNOUSERSITE=true`, so the conventional
-# `~/.local/lib/pythonX.Y/site-packages` is dropped from sys.path even though
-# the directory exists. `python -m site --user-site` still reports the path,
-# and we re-introduce it through the `env` we hand to ssh.process so user
-# packages (e.g. `dojotool`) remain importable.
-def read_user_site_cache(cachefile: Path) -> bytes | None:
-    """Reads a fresh user-site environment cache."""
-    if not cachefile.exists():
-        return None
-    if time.time() - os.path.getmtime(cachefile) >= USER_SITE_CACHE_TTL:
-        return None
-    try:
-        return cachefile.read_bytes()
-    except OSError:
-        return None
-
-
-def discover_user_site(ssh: pwn.ssh) -> dict[str, str]:
-    """Discover and cache the remote python's user-site directory."""
-    cachefile = Path(ssh._get_cachefile(f"dojo-user-site-{ssh.host}-{ssh.port}"))
-    env_output = read_user_site_cache(cachefile)
-    if env_output is None:
-        env_output = ssh.system("PYTHONPATH=$(python -m site --user-site) env -0").recvrepeat()
-        cachefile.write_bytes(env_output)
-
-    decoded = env_output.decode()
-    return dict(line.split("=", 1) for line in decoded.split("\0") if line)
-
-
-def remote_command(args: Args, ssh: pwn.ssh) -> tuple[list[str], dict[str, str]]:
-    """Builds the remote (argv, env) for executing the entrypoint."""
+def remote_command(args: Args) -> list[str]:
+    """Builds the remote argv for executing the entrypoint."""
     ep = args.entrypoint
     rf = str(local_to_remote(ep, args.remote_root))
     if ep.suffix == ".py":
-        env = discover_user_site(ssh)
-        return ["python3", rf, *args.arguments], env
+        return ["python3", rf, *args.arguments]
 
     raise NotImplementedError(f"Unsupported file type: {ep.suffix or ep.name}")
 
@@ -301,13 +302,20 @@ def run_remote_until_change(
     watcher: ChangeWatcher,
 ) -> object:
     """Executes the remote command and monitors for local file changes."""
-    argv, env = remote_command(args, ssh)
+    argv = remote_command(args)
     cwd = str(args.remote_root)
     io: pwn.tubes.ssh.ssh_process
 
-    # env in ssh.system will replace the remote environment, use shell wrapper (ssh.system) for now.
-    # see https://github.com/Gallopsled/pwntools/issues/2751
-    with tee(ssh.process(argv, argv[0], cwd=cwd, env=env, aslr=True)) as io:  # type: ignore
+    with tee(
+        ssh.process(
+            argv,
+            argv[0],
+            cwd=cwd,
+            aslr=True,
+            preexec_fn=inject_extra_env,
+            preexec_args=(Repr("env"),),
+        )
+    ) as io:  # type: ignore
         try:
             while True:
                 io.recv(timeout=3)  # type: ignore
