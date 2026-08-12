@@ -4,14 +4,8 @@
 # from the home directory.
 
 # Perform tasks normally done by `bash --login`, as defined in /etc/profile
-if [ -d /etc/profile.d ]; then
-    for i in /etc/profile.d/*.sh; do
-        if [ -r $i ]; then
-            . $i
-        fi
-    done
-    unset i
-fi
+# shellcheck source=/dev/null
+. /etc/profile
 
 # Define an alias for objdump with Intel syntax and colored jump visualization
 alias objdump='objdump -M intel --visualize-jumps=color --disassembler-color=on --unicode=highlight'
