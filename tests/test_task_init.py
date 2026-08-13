@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import ClassVar
 from unittest.mock import patch
 
-SCRIPT_PATH = Path(__file__).parents[1] / "scripts" / "task-init.py"
+SCRIPT_PATH = Path(__file__).parents[1] / "scripts" / "task_init.py"
 SPEC = importlib.util.spec_from_file_location("task_init", SCRIPT_PATH)
 if SPEC is None or SPEC.loader is None:
     raise RuntimeError(f"Could not load {SCRIPT_PATH}")
@@ -88,7 +88,6 @@ class TaskInitTests(unittest.TestCase):
         self.assertEqual(metadata.module_name, "Race Conditions")
         self.assertEqual(metadata.challenge_name, "level11.1")
         self.assertEqual(metadata.challenge_id, "level-11-1")
-        self.assertEqual(metadata.local_challenge_id, "level-11-1")
 
     def test_id_matching_does_not_use_old_normalization(self) -> None:
         with self.assertRaises(task_init.ApiError) as raised:
@@ -109,7 +108,6 @@ class TaskInitTests(unittest.TestCase):
             "level-11-1",
             "Race Conditions",
             "level11.1",
-            "level-11",
         )
         with tempfile.TemporaryDirectory() as temporary_directory:
             flag_file = task_init.create_solution_file(
@@ -141,7 +139,6 @@ class TaskInitTests(unittest.TestCase):
             "level-11-1",
             "Race Conditions",
             "level11.1",
-            "level-11",
         )
         with tempfile.TemporaryDirectory() as temporary_directory:
             target = (

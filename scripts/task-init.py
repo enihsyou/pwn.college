@@ -33,8 +33,7 @@ PYTHON_TEMPLATE = """import pwn
 from dojotool import find_challenge, submit, tee
 
 
-def one_round(io: pwn.process) -> None:
-    pass
+def one_round(io: pwn.process) -> str: ...
 
 
 def ctf() -> None:
@@ -42,11 +41,10 @@ def ctf() -> None:
     with pwn.process(root_bin, raw=True, level="error") as io:
         tee(io)
         try:
-            one_round(io)
-            io.recvrepeat()
-        except Exception:
-            io.recvrepeat(0.5)
-            raise
+            flag = one_round(io)
+        finally:
+            io.recvrepeat(1)
+        submit(flag)
 
 
 if __name__ == "__main__":
@@ -574,7 +572,7 @@ def create_solution_file(
     """Create the API-ID path without overwriting an existing solution."""
     _path_identifier(metadata.dojo_id, "dojo", "challenge metadata")
     _path_identifier(metadata.module_id, "module", "challenge metadata")
-    _path_identifier(metadata.local_challenge_id, "challenge", "challenge metadata")
+    _path_identifier(metadata.challenge_id, "challenge", "challenge metadata")
     _header_text(metadata.module_name, "module name", "challenge metadata")
     _header_text(metadata.challenge_name, "challenge name", "challenge metadata")
     folder = (
@@ -582,7 +580,7 @@ def create_solution_file(
         / "challenges"
         / metadata.dojo_id
         / metadata.module_id
-        / metadata.local_challenge_id
+        / metadata.challenge_id
     )
     flag_file = folder / f"flag.{extension}"
     if flag_file.exists():
