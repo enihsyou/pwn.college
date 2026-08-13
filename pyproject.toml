@@ -21,9 +21,12 @@ dependencies = [
 
 [tool.uv]
 # this project is not for packaging.
+# for `uv run` to work locally, need to run `task dojotool-pth` first 
+# to create a .pth file in the virtual environment.
 package = false
 
 [tool.uv.sources]
+# use latest version of pwntools (v5.0.0), it has many PR fixes for Windows
 pwntools = { git = "https://github.com/gallopsled/pwntools.git", rev = "dev" }
 
 [tool.pyright]

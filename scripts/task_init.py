@@ -223,7 +223,6 @@ class ChallengeMetadata:
     challenge_id: str
     module_name: str
     challenge_name: str
-    local_challenge_id: str
 
 
 def parse_args() -> argparse.Namespace:
@@ -544,13 +543,12 @@ def resolve_challenge_metadata(
     return ChallengeMetadata(
         dojo_id,
         module_id,
-        challenge_id,
-        module_name,
-        challenge_name,
         # Paths use the exact API challenge ID.  In particular, do not merge
         # paired ``-0``/``-1`` challenges: each ID identifies a distinct
         # challenge and therefore gets its own directory.
         challenge_id,
+        module_name,
+        challenge_name,
     )
 
 

@@ -8,7 +8,7 @@
 
 version: "3"
 
-# Task loads the local token into the environment for scripts/task-init.py;
+# Task loads the local token into the environment for scripts/task_init.py;
 # the token itself remains in the ignored .env file rather than this file.
 dotenv: [".env"]
 
@@ -35,7 +35,17 @@ tasks:
     vars:
       extension: '{{default "py" .extension}}'
     cmds:
-      - uv run python scripts/task-init.py "{{.extension}}"
+      - uv run python scripts/task_init.py "{{.extension}}"
+
+  submit:
+    desc: Run the Python solution for the running challenge
+    cmds:
+      - uv run python scripts/task_submit.py
+
+  test:
+    desc: Run the task initialization and submission tests
+    cmds:
+      - uv run python -m unittest tests/test_task_init.py tests/test_task_submit.py
 
   pull:
     desc: Download challenge file to local
@@ -49,5 +59,13 @@ tasks:
     vars:
       PTH_DIR: .venv/Lib/site-packages
       MOD_DIR: workspace/home/hacker/.local/lib/python3.13/site-packages
+      EXTRA_DIRS:
+        - workspace/home/hacker/.local/lib/python3.13/site-packages
+        - scripts
     cmds:
-      - printf "{{ relPath .PTH_DIR .MOD_DIR | toSlash }}" > "{{.PTH_DIR}}/dojotool.pth"
+      - |
+        {
+        {{- range .EXTRA_DIRS }}
+          printf '%s\n' "{{ relPath $.PTH_DIR . | toSlash }}"
+        {{- end }}
+        } > "{{.PTH_DIR}}/dojotool.pth"

@@ -27,7 +27,9 @@ from that dojo's API module list. It writes under
 `challenges/{dojo}/{module_id}/{challenge_id}` using the exact API IDs and
 preserves existing files.
 Task loads `DOJO_ACCESS_TOKEN` from the ignored `.env` file; the same variable
-can be exported when invoking `uv run python scripts/task-init.py` directly.
+can be exported when invoking `uv run python scripts/task_init.py` directly.
+Run `task submit` to resolve the same active challenge and execute its
+`flag.py` with `uv run`.
 
 For the API contract, headers, request flow, and troubleshooting, see
 [`docs/pwn_college_api.md`](docs/pwn_college_api.md).
