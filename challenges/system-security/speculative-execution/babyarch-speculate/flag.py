@@ -16,7 +16,8 @@ site.addsitedir(
 )
 import pwn
 import rich
-from dojotool import find_challenge, submit, tee
+from dojotool import find_challenge, submit
+from dojotool.pwntool import tee
 
 
 def percentile(data: list[int], p: int) -> int:

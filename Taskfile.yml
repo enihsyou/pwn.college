@@ -1,7 +1,8 @@
 # https://taskfile.dev
 #
 # Sync the local `workspace/` tree to the pwn.college dojo so that the
-# `dojotool` package is importable as `from dojotool import tee, find_challenge`
+# `dojotool` package is importable as `from dojotool import find_challenge` and
+# `from dojotool.pwntool import tee`
 # under the user `hacker` on the dojo.
 #
 #   task sync

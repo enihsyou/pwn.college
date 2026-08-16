@@ -12,7 +12,8 @@ site.addsitedir(
     "/nix/store/8rkdh1mj5w4ysz03j9n5xcdamcwrdwjd-python3-3.13.11-env/lib/python3.13/site-packages"
 )
 import pwn
-from dojotool import find_challenge, submit, tee
+from dojotool import find_challenge, submit
+from dojotool.pwntool import tee
 
 
 def inside_challenge() -> None:

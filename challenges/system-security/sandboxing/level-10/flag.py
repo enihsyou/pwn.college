@@ -1,6 +1,7 @@
 # Seccomp Minimal
 import pwn
-from dojotool import find_challenge, tee
+from dojotool import find_challenge
+from dojotool.pwntool import tee
 
 
 def one_round(io: pwn.process, index: int) -> int:
