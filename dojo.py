@@ -289,10 +289,12 @@ def interrupt_remote(ssh: pwn.ssh, io: pwn.tubes.ssh.ssh_process) -> None:
 def remote_command(args: Args) -> list[str]:
     """Builds the remote argv for executing the entrypoint."""
     ep = args.entrypoint
-    rf = str(local_to_remote(ep, args.remote_root))
+    rf = local_to_remote(ep, args.remote_root)
     if ep.suffix == ".py":
-        return ["python3", rf, *args.arguments]
-
+        return ["python3", str(rf), *args.arguments]
+    if ep.suffix == ".c":
+        out = rf.with_suffix(".out")
+        return ["gcc", "-O1", "-Wall", "-o", str(out), str(rf), *args.arguments]
     raise NotImplementedError(f"Unsupported file type: {ep.suffix or ep.name}")
 
 

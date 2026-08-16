@@ -132,6 +132,37 @@ class TaskInitTests(unittest.TestCase):
             )
             self.assertIn("def ctf()", flag_file.read_text(encoding="utf-8"))
 
+    def test_create_solution_c_uses_c_style_comments(self) -> None:
+        metadata = task_init.ChallengeMetadata(
+            "system-security",
+            "speculative-execution",
+            "level9",
+            "Microarchitecture Exploitation",
+            "Spooky Spectre 2",
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            flag_file = task_init.create_solution_file(
+                metadata, "c", Path(temporary_directory)
+            )
+            self.assertEqual(
+                flag_file,
+                Path(temporary_directory)
+                / "challenges"
+                / "system-security"
+                / "speculative-execution"
+                / "level9"
+                / "flag.c",
+            )
+            lines = flag_file.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(
+                lines[:2],
+                [
+                    "// Microarchitecture Exploitation - Spooky Spectre 2",
+                    "// https://pwn.college/system-security/speculative-execution/level9",
+                ],
+            )
+            self.assertNotIn("def ctf()", flag_file.read_text(encoding="utf-8"))
+
     def test_existing_solution_is_not_overwritten(self) -> None:
         metadata = task_init.ChallengeMetadata(
             "system-security",

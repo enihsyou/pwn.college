@@ -29,7 +29,7 @@ tasks:
         "{{.HACKER_SRC}}/" "{{.DOJO_HOST}}:./"
 
   init:
-    desc: Initialize a solution from the running challenge via the pwn.college API (extension=py|sh)
+    desc: Initialize a solution from the running challenge via the pwn.college API
     summary: |
       Usage: task init extension=py
     vars:

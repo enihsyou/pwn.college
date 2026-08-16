@@ -172,9 +172,7 @@ class JsonFileCache[T]:
             if cached.string(self.key_field) != key:
                 return None
             etag = cached.optional_string("etag")
-            if etag is not None and any(
-                character in etag for character in ("\r", "\n")
-            ):
+            if etag is not None and any(character in etag for character in ("\r", "\n")):
                 return None
             value = self.decode(cached.object("response"))
         except (OSError, json.JSONDecodeError, ApiError, TypeError):
@@ -192,9 +190,7 @@ class JsonFileCache[T]:
         try:
             entry.path.touch()
         except OSError as error:
-            console.print(
-                f"[yellow]Warning:[/] Could not refresh {self.label} cache age: {error}"
-            )
+            console.print(f"[yellow]Warning:[/] Could not refresh {self.label} cache age: {error}")
 
     def write(self, key: str, value: T, etag: str | None) -> None:
         envelope = {
@@ -209,9 +205,7 @@ class JsonFileCache[T]:
                 encoding="utf-8",
             )
         except (OSError, TypeError) as error:
-            console.print(
-                f"[yellow]Warning:[/] Could not update {self.label} cache: {error}"
-            )
+            console.print(f"[yellow]Warning:[/] Could not update {self.label} cache: {error}")
 
 
 @dataclass(frozen=True)
@@ -231,7 +225,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "extension",
-        choices=("py", "sh"),
+        choices=("py", "sh", "c"),
         default="py",
         nargs="?",
         help="solution file extension (default: py)",
@@ -280,9 +274,7 @@ class PwnCollegeApi:
         }
         if extra_headers:
             headers.update(extra_headers)
-        conditional_request = any(
-            name.casefold() == "if-none-match" for name in headers
-        )
+        conditional_request = any(name.casefold() == "if-none-match" for name in headers)
         request = Request(
             f"{self._base_url}{path}",
             method="GET",
@@ -298,8 +290,11 @@ class PwnCollegeApi:
             try:
                 if conditional_request and error.code == 304:
                     return None, error.headers
+                reason = error.msg
+                if error.code == 500:
+                    reason = "the DOJO_ACCESS_TOKEN may be expired or revoked"
                 raise ApiTransportError(
-                    f"pwn.college API returned HTTP {error.code} for {path}"
+                    f"pwn.college API returned HTTP {error.code} for {path}: {reason}"
                 ) from error
             finally:
                 error.close()
@@ -312,9 +307,7 @@ class PwnCollegeApi:
         try:
             payload = json.loads(raw_body.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise ApiSchemaError(
-                f"pwn.college API returned invalid JSON for {path}"
-            ) from error
+            raise ApiSchemaError(f"pwn.college API returned invalid JSON for {path}") from error
         response = JsonObject(payload, f"pwn.college API response for {path}")
         success = response.boolean("success")
         if not success:
@@ -332,9 +325,7 @@ class PwnCollegeApi:
         """Return the API's current dojo/module/challenge context."""
         payload = self._request_json("/docker")
         response = JsonObject(payload, "pwn.college API response for /docker")
-        return {
-            field: response.string(field) for field in ("dojo", "module", "challenge")
-        }
+        return {field: response.string(field) for field in ("dojo", "module", "challenge")}
 
     def modules(self, dojo_id: str) -> dict[str, Any]:
         """Return the module/challenge hierarchy for one dojo ID."""
@@ -352,9 +343,7 @@ class PwnCollegeApi:
             )
         except ApiTransportError as error:
             if cache:
-                console.print(
-                    f"[yellow]Warning:[/] {error}; using cached module response"
-                )
+                console.print(f"[yellow]Warning:[/] {error}; using cached module response")
                 return cache.value
             raise
 
@@ -403,9 +392,7 @@ def _challenge_ids(module: JsonObject) -> set[str]:
             challenge_object.path,
         )
         if challenge_id in ids:
-            raise ApiSchemaError(
-                f"{module.path} contains duplicate challenge ID {challenge_id!r}"
-            )
+            raise ApiSchemaError(f"{module.path} contains duplicate challenge ID {challenge_id!r}")
         ids.add(challenge_id)
     return ids
 
@@ -429,9 +416,7 @@ def _validate_modules_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
         )
         _challenge_ids(module_object)
         if module_id in module_ids:
-            raise ApiSchemaError(
-                f"modules response contains duplicate module ID {module_id!r}"
-            )
+            raise ApiSchemaError(f"modules response contains duplicate module ID {module_id!r}")
         module_ids.add(module_id)
     return dict(response.value)
 
@@ -487,12 +472,8 @@ def resolve_challenge_metadata(
 ) -> ChallengeMetadata:
     """Match IDs exactly, then derive names and an optional merged local ID."""
     context_object = JsonObject(context, "docker response")
-    dojo_id = _path_identifier(
-        context_object.string("dojo"), "dojo", context_object.path
-    )
-    module_id = _path_identifier(
-        context_object.string("module"), "module", context_object.path
-    )
+    dojo_id = _path_identifier(context_object.string("dojo"), "dojo", context_object.path)
+    module_id = _path_identifier(context_object.string("module"), "module", context_object.path)
     challenge_id = _path_identifier(
         context_object.string("challenge"), "challenge", context_object.path
     )
@@ -513,9 +494,7 @@ def resolve_challenge_metadata(
     if not matching_modules:
         raise ApiError(f"Module ID {module_id!r} was not found in dojo {dojo_id!r}")
     if len(matching_modules) != 1:
-        raise ApiSchemaError(
-            f"modules response contains duplicate module ID {module_id!r}"
-        )
+        raise ApiSchemaError(f"modules response contains duplicate module ID {module_id!r}")
     module = matching_modules[0]
     module_name = _header_text(module.string("name"), "name", module.path)
     matching_challenges: list[JsonObject] = []
@@ -554,9 +533,10 @@ def resolve_challenge_metadata(
 
 def render_solution(metadata: ChallengeMetadata, extension: str) -> str:
     """Render the required two-line provenance header followed by the template."""
+    comment = "//" if extension == "c" else "#"
     header = (
-        f"# {metadata.module_name} - {metadata.challenge_name}\n"
-        f"# https://pwn.college/{metadata.dojo_id}/{metadata.module_id}/"
+        f"{comment} {metadata.module_name} - {metadata.challenge_name}\n"
+        f"{comment} https://pwn.college/{metadata.dojo_id}/{metadata.module_id}/"
         f"{metadata.challenge_id}\n\n"
     )
     return header + (PYTHON_TEMPLATE if extension == "py" else "")
@@ -584,9 +564,7 @@ def create_solution_file(
     if flag_file.exists():
         return flag_file
     folder.mkdir(parents=True, exist_ok=True)
-    flag_file.write_text(
-        render_solution(metadata, extension), encoding="utf-8", newline="\n"
-    )
+    flag_file.write_text(render_solution(metadata, extension), encoding="utf-8", newline="\n")
     return flag_file
 
 
