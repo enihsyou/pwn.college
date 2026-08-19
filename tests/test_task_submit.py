@@ -26,14 +26,19 @@ class TaskSubmitTests(unittest.TestCase):
                 Path(temporary_directory),
             ),
         ):
-            self.assertEqual(
-                task_submit.solution_path(self.metadata),
+            script = (
                 Path(temporary_directory)
                 / "challenges"
                 / "system-security"
                 / "race-conditions"
                 / "level-11-1"
-                / "flag.py",
+                / "flag.py"
+            )
+            script.parent.mkdir(parents=True)
+            script.write_text("", encoding="utf-8")
+            self.assertEqual(
+                task_submit.solution_path(self.metadata),
+                script,
             )
 
     def test_main_runs_existing_solution_with_uv(self) -> None:

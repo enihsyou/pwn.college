@@ -46,7 +46,7 @@ tasks:
   test:
     desc: Run the task initialization and submission tests
     cmds:
-      - uv run python -m unittest tests/test_task_init.py tests/test_task_submit.py
+      - uv run python -m unittest discover tests
 
   pull:
     desc: Download challenge file to local
