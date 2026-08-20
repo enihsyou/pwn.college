@@ -293,7 +293,7 @@ def remote_command(args: Args) -> list[str]:
     if ep.suffix == ".py":
         return ["python3", str(rf), *args.arguments]
     if ep.suffix == ".c":
-        out = rf.with_suffix(".out")
+        out = rf.with_suffix("")
         return ["gcc", "-O1", "-Wall", "-o", str(out), str(rf), *args.arguments]
     raise NotImplementedError(f"Unsupported file type: {ep.suffix or ep.name}")
 

@@ -32,7 +32,8 @@ tasks:
   init:
     desc: Initialize a solution from the running challenge via the pwn.college API
     summary: |
-      Usage: task init extension=py
+      Usage: task init
+             task init extension=c
     vars:
       extension: '{{default "py" .extension}}'
     cmds:
@@ -40,8 +41,11 @@ tasks:
 
   submit:
     desc: Run the Python solution for the running challenge
+    summary: |
+      Usage: task submit                  # forwards --recursive by default
+             task submit -- --upload-only # any extra dojo.py flag
     cmds:
-      - uv run python scripts/task_submit.py
+      - uv run python scripts/task_submit.py -r {{.CLI_ARGS}}
 
   test:
     desc: Run the task initialization and submission tests

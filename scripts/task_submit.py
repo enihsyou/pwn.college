@@ -42,7 +42,7 @@ def solution_path(metadata) -> Path:
     )
 
 
-def main() -> int:
+def main(extra_args: list[str]) -> int:
     try:
         token = task_init.read_access_token()
         api = task_init.PwnCollegeApi(token)
@@ -62,11 +62,13 @@ def main() -> int:
 
     relative_script = script.relative_to(task_init.REPOSITORY_ROOT)
     return subprocess.run(
-        ["uv", "run", "dojo.py", relative_script.as_posix()],
+        ["uv", "run", "dojo.py", *extra_args, relative_script.as_posix()],
         cwd=task_init.REPOSITORY_ROOT,
         check=False,
     ).returncode
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    import sys
+
+    raise SystemExit(main(list(sys.argv[1:])))
