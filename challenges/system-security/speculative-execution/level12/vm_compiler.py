@@ -115,8 +115,6 @@ def compile() -> None:
     sys.stdout.buffer.write(bytecode)
     sys.stdout.buffer.flush()
 
-    # print('\n'.join(vm.disassemble(bytecode)))
-
 
 if __name__ == "__main__":
     raise SystemExit(compile())

@@ -61,11 +61,15 @@ def main(extra_args: list[str]) -> int:
         return 1
 
     relative_script = script.relative_to(task_init.REPOSITORY_ROOT)
-    return subprocess.run(
-        ["uv", "run", "dojo.py", *extra_args, relative_script.as_posix()],
-        cwd=task_init.REPOSITORY_ROOT,
-        check=False,
-    ).returncode
+    try:
+        return subprocess.run(
+            ["uv", "run", "dojo.py", *extra_args, relative_script.as_posix()],
+            cwd=task_init.REPOSITORY_ROOT,
+            check=False,
+        ).returncode
+    except KeyboardInterrupt:
+        task_init.console.print("[bold yellow]Submission cancelled.[/]")
+        return 1
 
 
 if __name__ == "__main__":

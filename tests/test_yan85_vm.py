@@ -66,7 +66,7 @@ class Yan85VMTests(unittest.TestCase):
         vm = make_vm()
         bytecode = vm.assemble(source)
         self.assertEqual(
-            vm.disassemble(bytecode, marker=False),
+            vm.disassemble(bytecode, marker=False).splitlines(),
             [
                 "IMM a = 0x2a",
                 "ADD a b",
@@ -78,20 +78,20 @@ class Yan85VMTests(unittest.TestCase):
                 "SYS OPEN a",
             ],
         )
-        self.assertEqual(vm.assemble("\n".join(vm.disassemble(bytecode, marker=False))), bytecode)
+        self.assertEqual(vm.assemble(vm.disassemble(bytecode, marker=False)), bytecode)
 
     def test_disassemble_marker_includes_offset(self) -> None:
         vm = make_vm()
         bytecode = vm.assemble("IMM a = 0x01\nADD a b")
         self.assertEqual(
-            vm.disassemble(bytecode),
+            vm.disassemble(bytecode).splitlines(),
             [
                 "0x0000: IMM a = 0x01",
                 "0x0003: ADD a b",
             ],
         )
         self.assertEqual(
-            vm.disassemble(bytecode, marker=False),
+            vm.disassemble(bytecode, marker=False).splitlines(),
             [
                 "IMM a = 0x01",
                 "ADD a b",
@@ -102,14 +102,14 @@ class Yan85VMTests(unittest.TestCase):
         vm = make_vm()
         bytecode = vm.assemble("IMM s = 0x01\nJMP E s")
         self.assertEqual(
-            vm.disassemble(bytecode, marker=True),
+            vm.disassemble(bytecode, marker=True).splitlines(),
             [
                 "0x0000 [ 1]: IMM s = 0x01",
                 "0x0003 [ 2]: JMP E s",
             ],
         )
         self.assertEqual(
-            vm.disassemble(bytecode, marker=False),
+            vm.disassemble(bytecode, marker=False).splitlines(),
             [
                 "IMM s = 0x01",
                 "JMP E s",
@@ -129,7 +129,7 @@ class Yan85VMTests(unittest.TestCase):
         """
         vm = make_vm()
         bytecode = vm.assemble(source)
-        listing = vm.disassemble(bytecode, marker=False)
+        listing = vm.disassemble(bytecode, marker=False).splitlines()
         self.assertEqual(
             listing,
             [
@@ -152,9 +152,9 @@ class Yan85VMTests(unittest.TestCase):
         default_bytes = default_vm.assemble(source)
         shuffled_bytes = shuffled_vm.assemble(source)
         self.assertNotEqual(default_bytes, shuffled_bytes)
-        self.assertEqual(default_vm.disassemble(default_bytes, marker=False), source.splitlines())
-        self.assertEqual(shuffled_vm.disassemble(shuffled_bytes, marker=False), source.splitlines())
-        self.assertEqual(shuffled_vm.assemble("\n".join(shuffled_vm.disassemble(shuffled_bytes, marker=False))), shuffled_bytes)
+        self.assertEqual(default_vm.disassemble(default_bytes, marker=False).splitlines(), source.splitlines())
+        self.assertEqual(shuffled_vm.disassemble(shuffled_bytes, marker=False).splitlines(), source.splitlines())
+        self.assertEqual(shuffled_vm.assemble(shuffled_vm.disassemble(shuffled_bytes, marker=False)), shuffled_bytes)
 
     def test_encoding_clone_and_layout_validation(self) -> None:
         vm = make_vm()
