@@ -332,8 +332,8 @@ class PwnCollegeApi:
         """Return the module/challenge hierarchy for one dojo ID."""
         encoded_dojo = quote(dojo_id, safe="")
         path = f"/dojos/{encoded_dojo}/modules"
-        cache = read_module_cache(dojo_id)
-        if cache and module_cache_is_fresh(cache):
+        cache = _module_cache.read(dojo_id)
+        if cache and _module_cache.is_fresh(cache):
             return cache.value
 
         extra_headers = {"If-None-Match": cache.etag} if cache and cache.etag else None
@@ -350,7 +350,7 @@ class PwnCollegeApi:
 
         if payload is None:
             if cache:
-                refresh_module_cache_age(cache)
+                _module_cache.touch(cache)
                 return cache.value
             raise ApiTransportError(f"pwn.college API returned HTTP 304 for {path}")
 
@@ -435,37 +435,12 @@ _module_cache = JsonFileCache[dict[str, Any]](
 )
 
 
-def module_cache_path(dojo_id: str) -> Path:
-    return _module_cache.path_for(dojo_id)
-
-
-def read_module_cache(dojo_id: str) -> JsonCacheEntry[dict[str, Any]] | None:
-    return _module_cache.read(dojo_id)
-
-
-def module_cache_is_fresh(cache: JsonCacheEntry[dict[str, Any]]) -> bool:
-    return _module_cache.is_fresh(cache)
-
-
-def refresh_module_cache_age(cache: JsonCacheEntry[dict[str, Any]]) -> None:
-    _module_cache.touch(cache)
-
-
 def write_module_cache(
     dojo_id: str,
     payload: dict[str, Any],
     etag: str | None,
 ) -> None:
     _module_cache.write(dojo_id, payload, etag)
-
-
-def _local_challenge_id(challenge_id: str, challenge_ids: set[str]) -> str:
-    """Return the exact API ID used as the local directory name.
-
-    ``challenge_ids`` remains an argument for source compatibility with
-    callers of the former paired-variant helper; it is intentionally ignored.
-    """
-    return challenge_id
 
 
 def resolve_challenge_metadata(
