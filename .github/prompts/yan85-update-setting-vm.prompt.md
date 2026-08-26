@@ -21,7 +21,9 @@ Use the workspace Yan85 skill at [Yan85 VM encoding recovery](../skills/yan85-vm
 
 The skill's narrow scope, evidence rules, IDA MCP call budget, mutation policy, and source-edit restrictions override the generic agent defaults. If any required value remains unresolved, do not modify `$2` and return one concise failure stating which encoding is unresolved.
 
-On success, respond with exactly:
+## Silent execution
+
+Do not narrate steps, progress, tool calls, intermediate findings, hypotheses, or analysis. Suppress all status, transition, and recap text. The only output is the success block below, or the single concise failure line — nothing else.
 
 ```text
 已更新 setting_vm in <path>:

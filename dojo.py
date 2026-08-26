@@ -363,6 +363,8 @@ def deploy_loop(args: Args, watcher: ChangeWatcher) -> None:
 
             if args.upload_only:
                 pwn.log.info_once("Upload-only mode enabled, skipping execution")
+                sys.stdout.write("\a")  # a bell
+                sys.stdout.flush()
                 result = REMOTE_EXITED
             else:
                 result = run_remote_until_change(ssh, args, watcher)

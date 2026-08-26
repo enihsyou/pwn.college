@@ -2,6 +2,7 @@ source /opt/gef/gef.py
 
 set disassembly-flavor intel
 set debuginfod enabled off
+set follow-fork-mode child
 
 define print_string_array
     set $p = (char**)$arg0

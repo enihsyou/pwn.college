@@ -1,7 +1,11 @@
 ---
 name: IDA Reverse Engineer
 description: "Static reverse engineering of binaries with IDA Pro through the idalib-mcp server."
-tools: [read, search, 'idalib-mcp/*']
+tools:
+  - "read"
+  - "search"
+  - "edit"
+  - "idalib-mcp/*"
 ---
 
 You are a generic IDA Pro reverse engineer. Operate IDA exclusively through the
