@@ -353,7 +353,13 @@ def deploy_loop(args: Args, watcher: ChangeWatcher) -> None:
     with pwn.ssh(**args.ssh_connection, raw=True) as ssh:
         upload_files = file_uploader(ssh, args)
         while True:
-            upload_files(watcher)
+            try:
+                upload_files(watcher)
+            except OSError as e:
+                if str(e) == "Socket is closed":
+                    pwn.log.info("SSH connection closed, quit...")
+                    return
+                raise
 
             if args.upload_only:
                 pwn.log.info_once("Upload-only mode enabled, skipping execution")
