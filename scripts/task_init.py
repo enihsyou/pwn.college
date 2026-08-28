@@ -33,6 +33,8 @@ PYTHON_TEMPLATE = """import pwn
 from dojotool import find_challenge, submit
 from dojotool.pwntool import tee
 
+pwn.context.arch = "amd64"
+
 
 def one_round(io: pwn.process) -> str: ...
 
@@ -44,8 +46,13 @@ def ctf() -> None:
         try:
             flag = one_round(io)
         finally:
-            io.recvrepeat(1)
-        submit(flag)
+            data = io.recvrepeat(1)
+        if b"pwn.college{" in data:
+            ia = data.index(b"pwn.college{")
+            ib = data.index(b"}", ia)
+            flag = data[ia : ib + 1].decode()
+            submit(flag)
+            return
 
 
 if __name__ == "__main__":
