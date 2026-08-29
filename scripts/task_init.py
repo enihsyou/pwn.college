@@ -33,8 +33,6 @@ PYTHON_TEMPLATE = """import pwn
 from dojotool import find_challenge, submit
 from dojotool.pwntool import tee
 
-pwn.context.arch = "amd64"
-
 
 def one_round(io: pwn.process) -> str: ...
 
