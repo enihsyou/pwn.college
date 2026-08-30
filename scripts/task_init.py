@@ -34,7 +34,8 @@ from dojotool import find_challenge, submit
 from dojotool.pwntool import tee
 
 
-def one_round(io: pwn.process) -> str: ...
+def one_round(io: pwn.process): 
+    pass
 
 
 def ctf() -> None:
@@ -42,7 +43,7 @@ def ctf() -> None:
     with pwn.process(root_bin, raw=True, level="error") as io:
         tee(io)
         try:
-            flag = one_round(io)
+            one_round(io)
         finally:
             data = io.recvrepeat(1)
         if b"pwn.college{" in data:

@@ -69,7 +69,7 @@ def main(extra_args: list[str]) -> int:
         ).returncode
     except KeyboardInterrupt:
         task_init.console.print("[bold yellow]Submission cancelled.[/]")
-        return 1
+        return 0
 
 
 if __name__ == "__main__":
