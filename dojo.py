@@ -277,13 +277,19 @@ def file_uploader(ssh: pwn.ssh, args: Args):
 
     return upload_files
 
+def ssh_system_wait(ssh, command):
+    ch = ssh.system(command)
+    try:
+        return ch.wait()
+    finally:
+        ch.close()
 
 def interrupt_remote(ssh: pwn.ssh, io: pwn.tubes.ssh.ssh_process) -> None:
     """Forcibly terminates the currently running remote process."""
     process_alive = io.sock is not None
     if process_alive and io.pid:
         # io.kill() won't kill the process, we have to do it manually
-        ssh.system(f"kill -TERM {io.pid}").wait()
+        ssh_system_wait(ssh, f"kill -TERM {io.pid}")
 
 
 def remote_command(args: Args) -> list[str]:
