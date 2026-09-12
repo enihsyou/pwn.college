@@ -44,10 +44,7 @@ def solution_path(metadata) -> Path:
 
 def main(extra_args: list[str]) -> int:
     try:
-        token = task_init.read_access_token()
-        api = task_init.PwnCollegeApi(token)
-        context = api.current_challenge()
-        metadata = task_init.resolve_challenge_metadata(context, api.modules(context["dojo"]))
+        metadata = task_init.current_challenge_metadata()
         script = solution_path(metadata)
     except task_init.ApiError as error:
         task_init.console.print(f"[bold red]Error:[/] {error}")

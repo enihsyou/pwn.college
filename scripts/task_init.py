@@ -513,6 +513,14 @@ def resolve_challenge_metadata(
     )
 
 
+def current_challenge_metadata() -> ChallengeMetadata:
+    """Resolve the running challenge through the authenticated API."""
+    token = read_access_token()
+    api = PwnCollegeApi(token)
+    context = api.current_challenge()
+    return resolve_challenge_metadata(context, api.modules(context["dojo"]))
+
+
 def render_solution(metadata: ChallengeMetadata, extension: str) -> str:
     """Render the required two-line provenance header followed by the template."""
     comment = "//" if extension == "c" else "#"
@@ -553,10 +561,7 @@ def create_solution_file(
 def main() -> int:
     args = parse_args()
     try:
-        token = read_access_token()
-        api = PwnCollegeApi(token)
-        context = api.current_challenge()
-        metadata = resolve_challenge_metadata(context, api.modules(context["dojo"]))
+        metadata = current_challenge_metadata()
         flag_file = create_solution_file(metadata, args.extension)
     except ApiError as error:
         console.print(f"[bold red]Error:[/] {error}")

@@ -2,7 +2,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from scripts import task_submit
 
@@ -54,21 +54,11 @@ class TaskSubmitTests(unittest.TestCase):
             )
             script.parent.mkdir(parents=True)
             script.write_text("print('submitted')\n", encoding="utf-8")
-            api = Mock()
-            api.current_challenge.return_value = {
-                "dojo": "system-security",
-                "module": "race-conditions",
-                "challenge": "level-11-1",
-            }
-            api.modules.return_value = {"success": True, "modules": []}
-
             with (
                 patch.object(task_submit.task_init, "REPOSITORY_ROOT", repository_root),
-                patch.object(task_submit.task_init, "read_access_token", return_value="token"),
-                patch.object(task_submit.task_init, "PwnCollegeApi", return_value=api),
                 patch.object(
                     task_submit.task_init,
-                    "resolve_challenge_metadata",
+                    "current_challenge_metadata",
                     return_value=self.metadata,
                 ),
                 patch.object(
@@ -103,21 +93,11 @@ class TaskSubmitTests(unittest.TestCase):
             )
             script.parent.mkdir(parents=True)
             script.write_text("print('submitted')\n", encoding="utf-8")
-            api = Mock()
-            api.current_challenge.return_value = {
-                "dojo": "system-security",
-                "module": "race-conditions",
-                "challenge": "level-11-1",
-            }
-            api.modules.return_value = {"success": True, "modules": []}
-
             with (
                 patch.object(task_submit.task_init, "REPOSITORY_ROOT", repository_root),
-                patch.object(task_submit.task_init, "read_access_token", return_value="token"),
-                patch.object(task_submit.task_init, "PwnCollegeApi", return_value=api),
                 patch.object(
                     task_submit.task_init,
-                    "resolve_challenge_metadata",
+                    "current_challenge_metadata",
                     return_value=self.metadata,
                 ),
                 patch.object(

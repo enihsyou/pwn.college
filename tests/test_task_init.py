@@ -248,8 +248,8 @@ class TaskInitTests(unittest.TestCase):
             ):
                 self.assertEqual(api.modules("dojo-a"), payload)
             self.assertNotEqual(
-                task_init.module_cache_path("dojo-a"),
-                task_init.module_cache_path("dojo-b"),
+                task_init._module_cache.path_for("dojo-a"),
+                task_init._module_cache.path_for("dojo-b"),
             )
 
     def test_stale_module_cache_sends_etag_and_304_refreshes_age(self) -> None:
@@ -267,7 +267,7 @@ class TaskInitTests(unittest.TestCase):
             ),
         ):
             task_init.write_module_cache("dojo-a", payload, '"etag-a"')
-            cache_path = task_init.module_cache_path("dojo-a")
+            cache_path = task_init._module_cache.path_for("dojo-a")
             old_timestamp = 1
             os.utime(cache_path, (old_timestamp, old_timestamp))
             api = task_init.PwnCollegeApi("secret-token", "https://example.invalid/api")
