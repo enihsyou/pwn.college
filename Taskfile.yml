@@ -59,10 +59,26 @@ tasks:
 
   pull:
     desc: Download challenge file to local
+    summary: |
+      Usage: task pull
+             task pull destination=/path/to/directory
+    vars:
+      destination: '{{default "./" .destination}}'
     cmds:
       # pull content inside `/challenge/`
-      # - rsync -avzP -e "{{.RSYNC_SSH}}" "{{.DOJO_HOST}}:/challenge/" .
-      - scp {{.DOJO_HOST}}:/challenge/* ./
+      # - rsync -avzP -e "{{.RSYNC_SSH}}" "{{.DOJO_HOST}}:/challenge/" "{{.destination}}"
+      - scp {{.DOJO_HOST}}:/challenge/* "{{.destination}}"
+
+  ida:
+    desc: Download the challenge binary to a temporary directory and open it in IDA
+    vars:
+      TEMP_DIR:
+        sh: mktemp --tmpdir "$TEMP" -d
+    cmds:
+      - task: pull
+        vars:
+          destination: "{{.TEMP_DIR}}"
+      - for file in $(find "{{.TEMP_DIR}}" -type f); do ida "$file"; done
 
   dojotool-pth:
     desc: Drop a .pth file so `import dojotool` resolves inside the uv venv
