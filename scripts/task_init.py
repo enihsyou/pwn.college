@@ -45,13 +45,13 @@ def ctf() -> None:
         try:
             one_round(io)
         finally:
-            data = io.recvrepeat(1)
-        if b"pwn.college{" in data:
-            ia = data.index(b"pwn.college{")
-            ib = data.index(b"}", ia)
-            flag = data[ia : ib + 1].decode()
-            submit(flag)
-            return
+            data = io.recvrepeat()
+    if b"pwn.college{" in data:
+        ia = data.index(b"pwn.college{")
+        ib = data.index(b"}", ia)
+        flag = data[ia : ib + 1].decode()
+        submit(flag)
+        return
 
 
 if __name__ == "__main__":

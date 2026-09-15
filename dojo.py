@@ -277,7 +277,7 @@ def file_uploader(ssh: pwn.ssh, args: Args):
 
     return upload_files
 
-def ssh_system_wait(ssh, command):
+def ssh_system_wait(ssh: pwn.ssh, command: str):
     ch = ssh.system(command)
     try:
         return ch.wait()
