@@ -45,7 +45,7 @@ def ctf() -> None:
         try:
             one_round(io)
         finally:
-            data = io.recvrepeat()
+            data = io.recvrepeat(1)  # allow exception to raise and output to tee
     if b"pwn.college{" in data:
         ia = data.index(b"pwn.college{")
         ib = data.index(b"}", ia)
