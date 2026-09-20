@@ -142,7 +142,16 @@ ghdecompile() {
         -postScript "$script_name" "$output"
 }
 
-export PATH="$PATH:./"
+case ":$PATH:" in
+  *":$HOME/.local/share/pwndbg/bin:"*) ;;
+  *) PATH="$PATH:$HOME/.local/share/pwndbg/bin" ;;
+esac
+case ":$PATH:" in
+  *":.:"*) ;;
+  *) PATH="$PATH:." ;;
+esac
+
+export PATH
 
 # Forcefully enable user site packages, even if PYTHONNOUSERSITE is set by nix makeCWrapper. 
 PYTHONPATH="$(python -m site --user-site):$PYTHONPATH"
