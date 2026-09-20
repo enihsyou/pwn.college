@@ -246,8 +246,7 @@ def read_access_token(environ: Mapping[str, str] | None = None) -> str:
     token = variables.get(ACCESS_TOKEN_VARIABLE, "").strip()
     if not token:
         raise ApiError(
-            f"{ACCESS_TOKEN_VARIABLE} is not set; export a pwn.college Access Token "
-            "before running task init"
+            f"{ACCESS_TOKEN_VARIABLE} is not set; export a pwn.college Access Token before running task init"
         )
     return token
 
@@ -489,8 +488,7 @@ def resolve_challenge_metadata(
             matching_challenges.append(challenge_object)
     if not matching_challenges:
         raise ApiError(
-            f"Challenge ID {challenge_id!r} was not found in module {module_id!r} "
-            f"of dojo {dojo_id!r}"
+            f"Challenge ID {challenge_id!r} was not found in module {module_id!r} of dojo {dojo_id!r}"
         )
     if len(matching_challenges) != 1:
         raise ApiSchemaError(

@@ -12,9 +12,7 @@ from typing import ClassVar, Sequence
 def _read_exact(stream: BytesIO, n: int, what: str) -> bytes:
     data = stream.read(n)
     if len(data) != n:
-        raise ValueError(
-            f"unexpected EOF while reading {what}: want {n}, got {len(data)}"
-        )
+        raise ValueError(f"unexpected EOF while reading {what}: want {n}, got {len(data)}")
     return data
 
 
@@ -59,9 +57,7 @@ class Pixel:
 
     @classmethod
     def from_stream(cls, stream: BytesIO, what: str) -> Pixel:
-        r, g, b, ascii_val = cls.STRUCT.unpack(
-            _read_exact(stream, cls.STRUCT.size, what)
-        )
+        r, g, b, ascii_val = cls.STRUCT.unpack(_read_exact(stream, cls.STRUCT.size, what))
         return cls(r, g, b, ascii_val)
 
     def to_bytes(self) -> bytes:
@@ -93,9 +89,7 @@ class RenderState:
         rows = []
         for y in range(self.height):
             start = y * self.width
-            row = "".join(
-                p.to_ansi() for p in self.framebuffer[start : start + self.width]
-            )
+            row = "".join(p.to_ansi() for p in self.framebuffer[start : start + self.width])
             rows.append(row + newline)
         return "".join(rows)
 
@@ -141,13 +135,10 @@ class Directive1RenderFrame(Directive, code=1):
     pixels: tuple[Pixel, ...]
 
     @classmethod
-    def from_stream(
-        cls, stream: BytesIO, header: CIMGHeader, index: int
-    ) -> Directive1RenderFrame:
+    def from_stream(cls, stream: BytesIO, header: CIMGHeader, index: int) -> Directive1RenderFrame:
         count = header.width * header.height
         pixels = tuple(
-            Pixel.from_stream(stream, f"directive[{index}] code=1 pixel[{i}]")
-            for i in range(count)
+            Pixel.from_stream(stream, f"directive[{index}] code=1 pixel[{i}]") for i in range(count)
         )
         return cls(pixels)
 
@@ -174,23 +165,20 @@ class Directive2RenderPatch(Directive, code=2):
     pixels: tuple[Pixel, ...]
 
     @classmethod
-    def from_stream(
-        cls, stream: BytesIO, _header: CIMGHeader, index: int
-    ) -> Directive2RenderPatch:
+    def from_stream(cls, stream: BytesIO, _header: CIMGHeader, index: int) -> Directive2RenderPatch:
         x, y, width, height = cls.META_STRUCT.unpack(
             _read_exact(stream, cls.META_STRUCT.size, f"directive[{index}] code=2 meta")
         )
         count = width * height
         pixels = tuple(
-            Pixel.from_stream(stream, f"directive[{index}] code=2 pixel[{i}]")
-            for i in range(count)
+            Pixel.from_stream(stream, f"directive[{index}] code=2 pixel[{i}]") for i in range(count)
         )
         return cls(x, y, width, height, pixels)
 
     def to_bytes(self) -> bytes:
-        return self.META_STRUCT.pack(
-            self.x, self.y, self.width, self.height
-        ) + b"".join(p.to_bytes() for p in self.pixels)
+        return self.META_STRUCT.pack(self.x, self.y, self.width, self.height) + b"".join(
+            p.to_bytes() for p in self.pixels
+        )
 
     def apply(self, state: RenderState, idx: int) -> None:
         if len(self.pixels) != self.width * self.height:
@@ -218,16 +206,11 @@ class Directive3CreateSprite(Directive, code=3):
         sprite_id, width, height = cls.META_STRUCT.unpack(
             _read_exact(stream, cls.META_STRUCT.size, f"directive[{index}] code=3 meta")
         )
-        ascii_data = _read_exact(
-            stream, width * height, f"directive[{index}] code=3 ascii_data"
-        )
+        ascii_data = _read_exact(stream, width * height, f"directive[{index}] code=3 ascii_data")
         return cls(sprite_id, width, height, ascii_data)
 
     def to_bytes(self) -> bytes:
-        return (
-            self.META_STRUCT.pack(self.sprite_id, self.width, self.height)
-            + self.ascii_data
-        )
+        return self.META_STRUCT.pack(self.sprite_id, self.width, self.height) + self.ascii_data
 
     def apply(self, state: RenderState, idx: int) -> None:
         expect = self.width * self.height
@@ -259,9 +242,7 @@ class Directive4RenderSprite(Directive, code=4):
     ) -> Directive4RenderSprite:
         return cls(
             *cls.META_STRUCT.unpack(
-                _read_exact(
-                    stream, cls.META_STRUCT.size, f"directive[{index}] code=4 meta"
-                )
+                _read_exact(stream, cls.META_STRUCT.size, f"directive[{index}] code=4 meta")
             )
         )
 
@@ -281,9 +262,7 @@ class Directive4RenderSprite(Directive, code=4):
     def apply(self, state: RenderState, idx: int) -> None:
         sprite = state.sprites.get(self.sprite_id)
         if sprite is None:
-            raise ValueError(
-                f"directive[{idx}] code=4 unknown sprite_id={self.sprite_id}"
-            )
+            raise ValueError(f"directive[{idx}] code=4 unknown sprite_id={self.sprite_id}")
         for j in range(self.repeat_y):
             for i in range(self.repeat_x):
                 start_x = self.x + i * sprite.width
@@ -311,21 +290,15 @@ class Directive5LoadSprite(Directive, code=5):
     filepath: bytes
 
     @classmethod
-    def from_stream(
-        cls, stream: BytesIO, _header: CIMGHeader, index: int
-    ) -> Directive5LoadSprite:
+    def from_stream(cls, stream: BytesIO, _header: CIMGHeader, index: int) -> Directive5LoadSprite:
         return cls(
             *cls.META_STRUCT.unpack(
-                _read_exact(
-                    stream, cls.META_STRUCT.size, f"directive[{index}] code=5 meta"
-                )
+                _read_exact(stream, cls.META_STRUCT.size, f"directive[{index}] code=5 meta")
             )
         )
 
     def to_bytes(self) -> bytes:
-        return self.META_STRUCT.pack(
-            self.sprite_id, self.width, self.height, self.filepath
-        )
+        return self.META_STRUCT.pack(self.sprite_id, self.width, self.height, self.filepath)
 
     def apply(self, state: RenderState, idx: int) -> None:
         with open(self.filepath.decode("utf-8"), "rb") as f:
@@ -344,9 +317,7 @@ class Directive6Flush(Directive, code=6):
         return b"0"
 
     @classmethod
-    def from_stream(
-        cls, stream: BytesIO, _header: CIMGHeader, index: int
-    ) -> Directive6Flush:
+    def from_stream(cls, stream: BytesIO, _header: CIMGHeader, index: int) -> Directive6Flush:
         _read_exact(stream, 1, f"directive[{index}] code=6 meta")
         return cls()
 
@@ -362,9 +333,7 @@ class Directive7Sleep(Directive, code=7):
     milliseconds: int
 
     @classmethod
-    def from_stream(
-        cls, stream: BytesIO, _header: CIMGHeader, index: int
-    ) -> Directive7Sleep:
+    def from_stream(cls, stream: BytesIO, _header: CIMGHeader, index: int) -> Directive7Sleep:
         (milliseconds,) = cls.META_STRUCT.unpack(
             _read_exact(stream, cls.META_STRUCT.size, f"directive[{index}] code=7 meta")
         )
@@ -394,9 +363,7 @@ class CIMGFile:
 
         for i in range(header.remaining_directives):
             (code,) = cls.DIRECTIVE_CODE_STRUCT.unpack(
-                _read_exact(
-                    stream, cls.DIRECTIVE_CODE_STRUCT.size, f"directive[{i}] code"
-                )
+                _read_exact(stream, cls.DIRECTIVE_CODE_STRUCT.size, f"directive[{i}] code")
             )
             directive_cls = Directive.parser_for_code(code)
             if directive_cls is None:
@@ -418,8 +385,7 @@ class CIMGFile:
             remaining_directives=len(self.directives),
         )
         return normalized_header.to_bytes() + b"".join(
-            self.DIRECTIVE_CODE_STRUCT.pack(d.code) + d.to_bytes()
-            for d in self.directives
+            self.DIRECTIVE_CODE_STRUCT.pack(d.code) + d.to_bytes() for d in self.directives
         )
 
     def write_to_file(self, path: str) -> None:

@@ -19,9 +19,9 @@ def one_round(io: pwn.process) -> None:
     def read_int8(idx):
         return pwn.u64(read_puts(idx).ljust(8, b"\x00")[:8])
 
-    rbp_scanf = 0x190 # stack_scanf ptr
-    rbp_free = 0x150 # stack_free ptr
-    rbp_secret = 0xAB # send_flag cmd target
+    rbp_scanf = 0x190  # stack_scanf ptr
+    rbp_free = 0x150  # stack_free ptr
+    rbp_secret = 0xAB  # send_flag cmd target
     if "hard" in str(io.executable):
         rbp_scanf = 0x190
         rbp_free = 0x150

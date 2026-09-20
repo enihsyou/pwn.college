@@ -41,7 +41,7 @@ def inside_challenge() -> None:
         ctypes.addressof(ctypes.c_char.from_buffer(buf))
     )
 
-    def get_timing_data() -> list[int]:        
+    def get_timing_data() -> list[int]:
         return [flush_reload(PROBE + i * 0x1000) for i in range(PAGE_COUNT)]
 
     def trigger(pos: int):

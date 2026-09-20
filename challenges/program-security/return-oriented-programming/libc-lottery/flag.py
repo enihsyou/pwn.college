@@ -140,7 +140,7 @@ def one_round(io_maker: Callable[[], pwn.tube], elf, libc):
 
 def one_round_worker(elf, libc):
     def io_maker():
-        io = pwn.remote('127.0.0.1', 1337, level='error')
+        io = pwn.remote("127.0.0.1", 1337, level="error")
         io.recvuntil(b"\n\n")
         return io
 

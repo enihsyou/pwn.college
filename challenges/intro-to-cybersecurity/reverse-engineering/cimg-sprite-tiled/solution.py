@@ -126,11 +126,7 @@ def extract_string_from_elf(elf_path: str, symbol_name: str) -> bytes:
 
 def display_desired_output(desired_output, width, height):
     for i in range(0, height):
-        print(
-            desired_output[
-                i * width * LEN_COLOR_ESC : (i + 1) * width * LEN_COLOR_ESC
-            ].decode()
-        )
+        print(desired_output[i * width * LEN_COLOR_ESC : (i + 1) * width * LEN_COLOR_ESC].decode())
 
 
 if __name__ == "__main__":

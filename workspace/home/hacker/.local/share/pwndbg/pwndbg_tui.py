@@ -313,7 +313,7 @@ _SETTINGS = (
     "set context-tui-adjust-height on",
     # Keep only the native sections used by this layout enabled.
     # Pwndbg will update these panes automatically.
-    #"set context-sections regs disasm backtrace",
+    # "set context-sections regs disasm backtrace",
     # The command pane does not need space reserved for CLI context.
     "set context-reserve-lines never",
     # Keep enough backtrace entries available for scrolling.

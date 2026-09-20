@@ -3,12 +3,12 @@ import sys
 
 from pwn import PTY, process
 
-p = process('/challenge/run', stdin=PTY, stdout=PTY)
+p = process("/challenge/run", stdin=PTY, stdout=PTY)
 c, k = 0, 0
 while True:
     line = p.recvline(timeout=1)
     sys.stdout.write(line)
-    if b'flag' in line:
+    if b"flag" in line:
         break
     if m := re.search(rb"Encrypted Character: (.)", line):
         c = ord(m.group(1))

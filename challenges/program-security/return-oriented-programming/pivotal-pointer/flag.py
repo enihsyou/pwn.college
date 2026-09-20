@@ -6,6 +6,7 @@ import pwn
 
 pwn.context.update(arch="amd64", os="linux", terminal=["tmux", "new-window"])
 
+
 def tee[T: pwn.tube](process: T) -> T:
     import sys
 

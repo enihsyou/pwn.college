@@ -110,9 +110,7 @@ class TaskInitTests(unittest.TestCase):
             "level11.1",
         )
         with tempfile.TemporaryDirectory() as temporary_directory:
-            flag_file = task_init.create_solution_file(
-                metadata, "py", Path(temporary_directory)
-            )
+            flag_file = task_init.create_solution_file(metadata, "py", Path(temporary_directory))
             self.assertEqual(
                 flag_file,
                 Path(temporary_directory)
@@ -141,9 +139,7 @@ class TaskInitTests(unittest.TestCase):
             "Spooky Spectre 2",
         )
         with tempfile.TemporaryDirectory() as temporary_directory:
-            flag_file = task_init.create_solution_file(
-                metadata, "c", Path(temporary_directory)
-            )
+            flag_file = task_init.create_solution_file(metadata, "c", Path(temporary_directory))
             self.assertEqual(
                 flag_file,
                 Path(temporary_directory)
@@ -183,9 +179,7 @@ class TaskInitTests(unittest.TestCase):
             existing = target / "flag.py"
             existing.write_text("# user content\n", encoding="utf-8")
 
-            returned = task_init.create_solution_file(
-                metadata, "py", Path(temporary_directory)
-            )
+            returned = task_init.create_solution_file(metadata, "py", Path(temporary_directory))
 
             self.assertEqual(returned, existing)
             self.assertEqual(existing.read_text(encoding="utf-8"), "# user content\n")
@@ -234,9 +228,7 @@ class TaskInitTests(unittest.TestCase):
         payload = modules_payload("level-11-1")
         with (
             tempfile.TemporaryDirectory() as temporary_directory,
-            patch.object(
-                task_init._module_cache, "directory", Path(temporary_directory)
-            ),
+            patch.object(task_init._module_cache, "directory", Path(temporary_directory)),
         ):
             task_init.write_module_cache("dojo-a", payload, '"etag-a"')
             task_init.write_module_cache("dojo-b", payload, '"etag-b"')
@@ -262,9 +254,7 @@ class TaskInitTests(unittest.TestCase):
 
         with (
             tempfile.TemporaryDirectory() as temporary_directory,
-            patch.object(
-                task_init._module_cache, "directory", Path(temporary_directory)
-            ),
+            patch.object(task_init._module_cache, "directory", Path(temporary_directory)),
         ):
             task_init.write_module_cache("dojo-a", payload, '"etag-a"')
             cache_path = task_init._module_cache.path_for("dojo-a")

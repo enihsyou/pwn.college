@@ -5,11 +5,11 @@ from pwn import log, process
 
 
 def ctf():
-    p = process('/challenge/run', level='debug')
+    p = process("/challenge/run", level="debug")
 
     while True:
         try:
-            received = p.recvuntil(b'?', timeout=1)
+            received = p.recvuntil(b"?", timeout=1)
             c_match = re.search(rb"Encrypted String: (.+)\n", received)
             k_match = re.search(rb"XOR Key String: (.+)\n", received)
 
@@ -25,6 +25,7 @@ def ctf():
             final_data = p.clean(timeout=1)
             log.success(f"Final output: \n{final_data.decode(errors='ignore')}")
             break
+
 
 if __name__ == "__main__":
     ctf()

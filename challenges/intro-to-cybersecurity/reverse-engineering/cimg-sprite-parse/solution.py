@@ -18,12 +18,8 @@ def patch_cimg(cimg: CIMGFile):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Parse cIMG and render terminal output."
-    )
-    parser.add_argument(
-        "path", nargs="?", default="flag.cimg", help="path to cIMG file"
-    )
+    parser = argparse.ArgumentParser(description="Parse cIMG and render terminal output.")
+    parser.add_argument("path", nargs="?", default="flag.cimg", help="path to cIMG file")
     args = parser.parse_args()
     cimg = parse_cimg(args.path)
     cimg = patch_cimg(cimg)

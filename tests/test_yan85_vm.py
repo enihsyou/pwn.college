@@ -152,9 +152,16 @@ class Yan85VMTests(unittest.TestCase):
         default_bytes = default_vm.assemble(source)
         shuffled_bytes = shuffled_vm.assemble(source)
         self.assertNotEqual(default_bytes, shuffled_bytes)
-        self.assertEqual(default_vm.disassemble(default_bytes, marker=False).splitlines(), source.splitlines())
-        self.assertEqual(shuffled_vm.disassemble(shuffled_bytes, marker=False).splitlines(), source.splitlines())
-        self.assertEqual(shuffled_vm.assemble(shuffled_vm.disassemble(shuffled_bytes, marker=False)), shuffled_bytes)
+        self.assertEqual(
+            default_vm.disassemble(default_bytes, marker=False).splitlines(), source.splitlines()
+        )
+        self.assertEqual(
+            shuffled_vm.disassemble(shuffled_bytes, marker=False).splitlines(), source.splitlines()
+        )
+        self.assertEqual(
+            shuffled_vm.assemble(shuffled_vm.disassemble(shuffled_bytes, marker=False)),
+            shuffled_bytes,
+        )
 
     def test_encoding_clone_and_layout_validation(self) -> None:
         vm = make_vm()

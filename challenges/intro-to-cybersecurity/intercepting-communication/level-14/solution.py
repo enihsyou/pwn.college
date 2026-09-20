@@ -26,9 +26,7 @@ print("[*] Resolving MAC addresses...")
 CLIENT_MAC = getmacbyip(CLIENT_IP)
 SERVER_MAC = getmacbyip(SERVER_IP)
 ATTACKER_MAC = get_if_hwaddr(conf.iface)
-print(
-    f"[*] Client MAC: {CLIENT_MAC} | Server MAC: {SERVER_MAC} | Attacker MAC: {ATTACKER_MAC}"
-)
+print(f"[*] Client MAC: {CLIENT_MAC} | Server MAC: {SERVER_MAC} | Attacker MAC: {ATTACKER_MAC}")
 
 
 def arp_spoof():

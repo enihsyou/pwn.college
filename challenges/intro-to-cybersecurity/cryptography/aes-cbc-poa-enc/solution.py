@@ -5,7 +5,7 @@ BLOCK_SIZE = 16
 
 
 def format_iv(zeroing_iv, pad_val):
-    return '??' * (BLOCK_SIZE - pad_val) + bytes(zeroing_iv[-pad_val:]).hex()
+    return "??" * (BLOCK_SIZE - pad_val) + bytes(zeroing_iv[-pad_val:]).hex()
 
 
 def single_block_attack(block, oracle, p):
@@ -44,14 +44,14 @@ def full_attack(iv, ct, oracle):
     assert len(iv) == BLOCK_SIZE and len(ct) % BLOCK_SIZE == 0
 
     msg = iv + ct
-    blocks = [msg[i:i + BLOCK_SIZE] for i in range(0, len(msg), BLOCK_SIZE)]
+    blocks = [msg[i : i + BLOCK_SIZE] for i in range(0, len(msg), BLOCK_SIZE)]
     result = b""
 
     total_blocks = len(ct) // BLOCK_SIZE
     with log.progress("开始恢复明文块") as p:
         iv = blocks[0]
         for idx, ct in enumerate(blocks[1:], 1):
-            p.status(f"{idx}/{total_blocks} ({idx/total_blocks:.2%})")
+            p.status(f"{idx}/{total_blocks} ({idx / total_blocks:.2%})")
             with log.progress(f"  恢复块 #{idx}") as p:
                 dec = single_block_attack(ct, oracle, p)
                 pt = xor(iv, dec)
@@ -66,8 +66,7 @@ def full_attack(iv, ct, oracle):
 def full_encrypt(pt, oracle):
     """Forge a valid AES-CBC ciphertext for an arbitrary plaintext."""
     padded = pad(pt, BLOCK_SIZE)
-    blocks = [padded[i:i + BLOCK_SIZE]
-              for i in range(0, len(padded), BLOCK_SIZE)]
+    blocks = [padded[i : i + BLOCK_SIZE] for i in range(0, len(padded), BLOCK_SIZE)]
 
     # Start from a block we control completely, then walk backwards.
     current_block = bytes(BLOCK_SIZE)
@@ -76,8 +75,8 @@ def full_encrypt(pt, oracle):
     total_blocks = len(blocks)
     with log.progress("正在伪造密文块") as p:
         for idx, pt_block in enumerate(reversed(blocks), 1):
-            p.status(f"{idx}/{total_blocks} ({idx/total_blocks:.2%})")
-            with log.progress(f"  计算块 #{total_blocks-idx+1}") as p:
+            p.status(f"{idx}/{total_blocks} ({idx / total_blocks:.2%})")
+            with log.progress(f"  计算块 #{total_blocks - idx + 1}") as p:
                 dec = single_block_attack(current_block, oracle, p)
                 p.success(f"{dec.hex()}")
             previous_block = xor(dec, pt_block)
@@ -86,18 +85,18 @@ def full_encrypt(pt, oracle):
         p.success(f"共伪造 {total_blocks} 个块")
 
     forged_blocks.reverse()
-    return b''.join(forged_blocks)
+    return b"".join(forged_blocks)
 
 
 def ctf():
     log.info("正在运行 /challenge/worker ...")
-    p = process('/challenge/worker')
+    p = process("/challenge/worker")
     p.clean(timeout=1)
 
     def oracle(iv_bytes, ct_block):
         p.sendline(f"TASK: {(iv_bytes + ct_block).hex()}".encode())
         response = p.recvline(timeout=0.2).strip()  # type: ignore
-        return b'Error' not in response
+        return b"Error" not in response
 
     rt = b"please give me the flag, kind worker process!"
     log.info(f"开始伪造目标明文: {rt!r}")

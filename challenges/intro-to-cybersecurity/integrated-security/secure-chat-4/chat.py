@@ -115,10 +115,7 @@ def reveal_sharon_username():
     session = login_as("alice")
     dh_a = 0
     dh_A = pow(DH_g, dh_a, mod=DH_p)
-    opening_message = (
-        "Hey Bob, I need to chat with you about something important. "
-        f"Let's chat securely over DHE-AES: {dh_A}."
-    )
+    opening_message = f"Hey Bob, I need to chat with you about something important. Let's chat securely over DHE-AES: {dh_A}."
     send_message(session, "bob", opening_message)
     pwn.info("Sent DHE-AES initiation message to Bob, waiting for his response...")
 

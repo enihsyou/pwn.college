@@ -47,7 +47,6 @@ def ctf():
 
     host()
 
-
     # chmod file under /tmp will not work
     home = pathlib.Path.home()
     link = home / "Z"
@@ -58,7 +57,8 @@ def ctf():
         io.recvrepeat()
     print(link.read_text())
     link.unlink()
-              
+
+
 def tee(process: pwn.tube):
     orig_send_raw = process.send_raw
     orig_recv_raw = process.recv_raw

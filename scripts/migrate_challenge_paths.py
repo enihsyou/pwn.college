@@ -55,13 +55,7 @@ class Candidate:
 
     @property
     def target(self) -> Path:
-        return (
-            REPOSITORY_ROOT
-            / "challenges"
-            / self.dojo_id
-            / self.module.id
-            / self.challenge.id
-        )
+        return REPOSITORY_ROOT / "challenges" / self.dojo_id / self.module.id / self.challenge.id
 
 
 def parse_args() -> argparse.Namespace:
@@ -168,9 +162,7 @@ def load_modules(dojo_id: str, token: str) -> tuple[Module, ...]:
             if not isinstance(challenge_name, str) or not challenge_name:
                 raise MigrationError(f"challenge {challenge_id!r} has no display name")
             if challenge_id in seen_challenges:
-                raise MigrationError(
-                    f"duplicate challenge ID {challenge_id!r} in {module_id!r}"
-                )
+                raise MigrationError(f"duplicate challenge ID {challenge_id!r} in {module_id!r}")
             seen_challenges.add(challenge_id)
             challenges.append(Challenge(challenge_id, challenge_name))
         modules.append(Module(module_id, module_name, tuple(challenges)))
@@ -258,7 +250,10 @@ def map_challenge(
                 break
             name_slug = slug(challenge.name)
             for name_suffix in ("-easy", "-hard"):
-                if name_slug.endswith(name_suffix) and name_slug[: -len(name_suffix)] == folder_slug:
+                if (
+                    name_slug.endswith(name_suffix)
+                    and name_slug[: -len(name_suffix)] == folder_slug
+                ):
                     base_matches.append(challenge)
                     break
             else:
@@ -271,9 +266,7 @@ def map_challenge(
         return next(iter(unique_base_matches.values())), "API base name"
 
     compact_matches = [
-        challenge
-        for challenge in module.challenges
-        if folder_compact == compact(challenge.name)
+        challenge for challenge in module.challenges if folder_compact == compact(challenge.name)
     ]
     if len(compact_matches) == 1:
         return compact_matches[0], "normalized API ID/name"
@@ -282,7 +275,9 @@ def map_challenge(
     return None, "no exact API ID, display name, or header URL mapping"
 
 
-def legacy_challenge_dirs(dojo_root: Path, modules: tuple[Module, ...]) -> list[tuple[Path, Module]]:
+def legacy_challenge_dirs(
+    dojo_root: Path, modules: tuple[Module, ...]
+) -> list[tuple[Path, Module]]:
     module_by_id = {module.id: module for module in modules}
     result: list[tuple[Path, Module]] = []
     for module_dir in sorted(dojo_root.iterdir()):

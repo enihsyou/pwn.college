@@ -5,7 +5,7 @@ BLOCK_SIZE = 16
 
 
 def format_iv(zeroing_iv, pad_val):
-    return '??' * (BLOCK_SIZE - pad_val) + bytes(zeroing_iv[-pad_val:]).hex()
+    return "??" * (BLOCK_SIZE - pad_val) + bytes(zeroing_iv[-pad_val:]).hex()
 
 
 def single_block_attack(block, oracle, p):
@@ -44,14 +44,14 @@ def full_attack(iv, ct, oracle):
     assert len(iv) == BLOCK_SIZE and len(ct) % BLOCK_SIZE == 0
 
     msg = iv + ct
-    blocks = [msg[i:i + BLOCK_SIZE] for i in range(0, len(msg), BLOCK_SIZE)]
+    blocks = [msg[i : i + BLOCK_SIZE] for i in range(0, len(msg), BLOCK_SIZE)]
     result = b""
 
     total_blocks = len(ct) // BLOCK_SIZE
     with log.progress("开始恢复明文块") as p:
         iv = blocks[0]
         for idx, ct in enumerate(blocks[1:], 1):
-            p.status(f"{idx}/{total_blocks} ({idx/total_blocks:.2%})")
+            p.status(f"{idx}/{total_blocks} ({idx / total_blocks:.2%})")
             with log.progress(f"  恢复块 #{idx}") as p:
                 dec = single_block_attack(ct, oracle, p)
                 pt = xor(iv, dec)
@@ -65,7 +65,7 @@ def full_attack(iv, ct, oracle):
 
 def ctf():
     log.info("正在运行 /challenge/dispatcher ...")
-    p = process(['/challenge/dispatcher', 'pw'])
+    p = process(["/challenge/dispatcher", "pw"])
     dispatcher_output = p.recvall().decode(errors="ignore").strip()
     p.close()
 
@@ -75,13 +75,13 @@ def ctf():
     ct = challenge[BLOCK_SIZE:]
 
     log.info("正在运行 /challenge/worker ...")
-    p = process('/challenge/worker')
+    p = process("/challenge/worker")
     p.clean(timeout=1)
 
     def oracle(iv_bytes, ct_block):
         p.sendline(f"TASK: {(iv_bytes + ct_block).hex()}".encode())
         response = p.recvline(timeout=0.2).strip()  # type: ignore
-        return b'Error' not in response
+        return b"Error" not in response
 
     log.info("开始 Padding Oracle 攻击...")
     pt = full_attack(iv, ct, oracle)

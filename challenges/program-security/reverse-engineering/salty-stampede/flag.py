@@ -71,9 +71,7 @@ class GameVersion1(GameVersion):
         expected_data_size = game_data.header.total_round * round_size
         if expected_data_size != game_data.header.file_size:
             raise ValueError(
-                "round count mismatch: "
-                f"rounds={game_data.header.total_round}, "
-                f"data_size={game_data.header.file_size}"
+                f"round count mismatch: rounds={game_data.header.total_round}, data_size={game_data.header.file_size}"
             )
 
         expected_size = data_offset + expected_data_size

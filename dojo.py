@@ -277,12 +277,14 @@ def file_uploader(ssh: pwn.ssh, args: Args):
 
     return upload_files
 
+
 def ssh_system_wait(ssh: pwn.ssh, command: str):
     ch = ssh.system(command)
     try:
         return ch.wait()
     finally:
         ch.close()
+
 
 def interrupt_remote(ssh: pwn.ssh, io: pwn.tubes.ssh.ssh_process) -> None:
     """Forcibly terminates the currently running remote process."""

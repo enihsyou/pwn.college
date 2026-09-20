@@ -9,9 +9,9 @@ def one_round(io: pwn.process):
 
     # how to exploit padding and flat_bufsize?? let's hardcode the offset for now
     offset = 0
-    if 'easy' in str(io.executable):
+    if "easy" in str(io.executable):
         offset = 0x170
-    if 'hard' in str(io.executable):
+    if "hard" in str(io.executable):
         offset = 0x110
     pwn.info(f"offset: {hex(offset)}")
 

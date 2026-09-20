@@ -14,6 +14,7 @@ def logout_thread(barrier: threading.Barrier) -> None:
         io.recvuntil(PROMPT)
         barrier.wait()
 
+
 def ctf() -> None:
     for count in range(1, 1000):
         print(f"Attempt {count}")
@@ -23,7 +24,9 @@ def ctf() -> None:
 
             threads = 3
             barrier = threading.Barrier(threads)
-            threads = [threading.Thread(target=logout_thread, args=(barrier,)) for _ in range(threads)]
+            threads = [
+                threading.Thread(target=logout_thread, args=(barrier,)) for _ in range(threads)
+            ]
 
             for thread in threads:
                 thread.start()

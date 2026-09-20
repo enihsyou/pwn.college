@@ -37,8 +37,7 @@ def solution_path(metadata) -> Path:
     listing = ", ".join(path.name for path in candidates) or "<none>"
     relative_dir = challenge_dir.relative_to(task_init.REPOSITORY_ROOT).as_posix()
     raise task_init.ApiError(
-        f"Cannot determine a unique solution in {relative_dir} "
-        f"(found: {listing}); expected exactly one flag.{{py,c}}"
+        f"Cannot determine a unique solution in {relative_dir} (found: {listing}); expected exactly one flag.{{py,c}}"
     )
 
 

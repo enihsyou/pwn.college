@@ -34,3 +34,6 @@ pwntools = { git = "https://github.com/gallopsled/pwntools.git", rev = "dev" }
 pythonPlatform = "Linux"
 # add extra paths to the python search path
 extraPaths = ["workspace/home/hacker/.local/lib/python3.13/site-packages"]
+
+[tool.ruff]
+line-length = 100

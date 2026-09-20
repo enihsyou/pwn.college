@@ -4,8 +4,7 @@ import struct
 from pwn import args, process, read, write
 
 LEN_COLOR_ESC = 24
-ESCAPED_PIXEL = re.compile(
-    rb"\x1b\[38;2;(\d+);(\d+);(\d+)m(.)\x1b\[0m", re.DOTALL)
+ESCAPED_PIXEL = re.compile(rb"\x1b\[38;2;(\d+);(\d+);(\d+)m(.)\x1b\[0m", re.DOTALL)
 DEFAULT_FILE = "answer.cimg"
 DEFAULT_SOURCE = "desired_output.bin"
 
@@ -18,8 +17,8 @@ def load_raw_input(source_path: str) -> bytes:
 
 
 def parse_pixels(raw_input: bytes):
-    w1 = raw_input.index(b'.', 0)
-    w2 = raw_input.index(b'.', w1 + 1)
+    w1 = raw_input.index(b".", 0)
+    w2 = raw_input.index(b".", w1 + 1)
     width = (w2 - w1) // LEN_COLOR_ESC + 1
     height = len(raw_input) // (width * LEN_COLOR_ESC)
 
@@ -57,7 +56,7 @@ def main():
         return
 
     io = process([chall_path, file_path])
-    print(io.clean().decode(errors='ignore'))
+    print(io.clean().decode(errors="ignore"))
     if io.poll() is None:
         io.interactive()
 
