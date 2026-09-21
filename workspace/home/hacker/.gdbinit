@@ -19,6 +19,13 @@ define print_string_array
     end
 end
 
+define distance
+    set $a = (unsigned long)$arg0
+    set $b = (unsigned long)$arg1
+    set $dist = $a - $b
+    printf "0x%lx - 0x%lx = 0x%lx (%ld)\n", $a, $b, $dist, $dist
+end
+
 define psa
     document psa
     Print a NULL-terminated string array (char**) with colors.
