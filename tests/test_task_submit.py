@@ -41,6 +41,27 @@ class TaskSubmitTests(unittest.TestCase):
                 script,
             )
 
+    def test_solution_path_supports_shell_script(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as temporary_directory,
+            patch.object(
+                task_submit.task_init,
+                "REPOSITORY_ROOT",
+                Path(temporary_directory),
+            ),
+        ):
+            script = (
+                Path(temporary_directory)
+                / "challenges"
+                / "system-security"
+                / "race-conditions"
+                / "level-11-1"
+                / "flag.sh"
+            )
+            script.parent.mkdir(parents=True)
+            script.write_text("", encoding="utf-8")
+            self.assertEqual(task_submit.solution_path(self.metadata), script)
+
     def test_main_runs_existing_solution_with_uv(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             repository_root = Path(temporary_directory)

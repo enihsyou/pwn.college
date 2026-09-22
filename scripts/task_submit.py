@@ -7,14 +7,14 @@ import task_init
 
 # File suffixes dojo.py knows how to deploy and run; keep in sync with
 # dojo.remote_command when new languages are added.
-SUPPORTED_SOLUTION_SUFFIXES = frozenset({".py", ".c"})
+SUPPORTED_SOLUTION_SUFFIXES = frozenset({".py", ".c", ".sh"})
 
 
 def solution_path(metadata) -> Path:
     """Return the solution path by scanning the challenge directory.
 
-    The challenge directory may contain either ``flag.py`` or ``flag.c`` (or
-    other dojo-supported variants); the script is not hard-coded. Raises
+    The challenge directory may contain ``flag.py``, ``flag.c``, or ``flag.sh``;
+    the script is not hard-coded. Raises
     ``task_init.ApiError`` when the directory is missing, contains no
     recognised solution, or contains more than one candidate so the caller
     can surface a clear error instead of silently picking the wrong file.
@@ -37,7 +37,7 @@ def solution_path(metadata) -> Path:
     listing = ", ".join(path.name for path in candidates) or "<none>"
     relative_dir = challenge_dir.relative_to(task_init.REPOSITORY_ROOT).as_posix()
     raise task_init.ApiError(
-        f"Cannot determine a unique solution in {relative_dir} (found: {listing}); expected exactly one flag.{{py,c}}"
+        f"Cannot determine a unique solution in {relative_dir} (found: {listing}); expected exactly one flag.{{py,c,sh}}"
     )
 
 

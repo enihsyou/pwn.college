@@ -31,7 +31,7 @@ preserves existing files.
 `DOJO_ACCESS_TOKEN` is loaded from the ignored `.env` file; the same variable
 can also be exported when invoking `uv run python scripts/task_init.py`
 directly. `task submit` resolves the same active challenge and executes its
-`flag.py` with `uv run`.
+supported `flag.py`, `flag.c`, or `flag.sh` solution.
 
 Notes on the API contract, headers, request flow, and troubleshooting are kept
 in [`docs/pwn_college_api.md`](docs/pwn_college_api.md).

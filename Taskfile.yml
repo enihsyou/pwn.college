@@ -40,7 +40,7 @@ tasks:
       - uv run python scripts/task_init.py "{{.extension}}"
 
   submit:
-    desc: Run the Python solution for the running challenge
+    desc: Run the solution for the running challenge
     summary: |
       Usage: task submit                  # forwards --recursive by default
              task submit -- --upload-only # any extra dojo.py flag
@@ -67,7 +67,7 @@ tasks:
     cmds:
       # pull content inside `/challenge/`
       # - rsync -avzP -e "{{.RSYNC_SSH}}" "{{.DOJO_HOST}}:/challenge/" "{{.destination}}"
-      - scp {{.DOJO_HOST}}:/challenge/* "{{.destination}}"
+      - scp -r {{.DOJO_HOST}}:/challenge/* "{{.destination}}"
 
   ida:
     desc: Download the challenge binary to a temporary directory and open it in IDA
