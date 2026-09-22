@@ -42,15 +42,13 @@ def ctf() -> None:
     root_bin = find_challenge()
     with pwn.process(root_bin, raw=True, level="error") as io:
         tee(io)
+        wait = 1
         try:
             one_round(io)
+            wait = io.default
         finally:
-            data = io.recvrepeat(1)  # allow exception to raise and output to tee
-    if b"pwn.college{" in data:
-        ia = data.index(b"pwn.college{")
-        ib = data.index(b"}", ia)
-        flag = data[ia : ib + 1].decode()
-        submit(flag)
+            data = io.recvrepeat(wait)
+    if submit(data):
         return
 
 
