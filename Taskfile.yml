@@ -65,9 +65,9 @@ tasks:
     vars:
       destination: '{{default "./" .destination}}'
     cmds:
-      # pull content inside `/challenge/`
-      # - rsync -avzP -e "{{.RSYNC_SSH}}" "{{.DOJO_HOST}}:/challenge/" "{{.destination}}"
-      - scp -r {{.DOJO_HOST}}:/challenge/* "{{.destination}}"
+      - rsync -avzP -e "{{.RSYNC_SSH}}"
+        --exclude='libc.so.6'
+        "{{.DOJO_HOST}}:/challenge/" "{{.destination}}"
 
   ida:
     desc: Download the challenge binary to a temporary directory and open it in IDA
