@@ -14,7 +14,7 @@ The directory structure of the challenges keeps sync with [pwncollege/challenges
 > - <https://lkliki.github.io/tags/PwnCollege/>
 > - <https://www.cubeyond.net/volume/1/>
 
-Disclaimer: All solutions approaches were independently developed by myself.
+Disclaimer: All solutions approaches were independently developed by myself with AI assistance.
 
 ---
 
