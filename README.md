@@ -11,6 +11,7 @@ The directory structure of the challenges keeps sync with [pwncollege/challenges
 >
 > - <https://writeups.kunull.net/pwn-college>
 > - <https://github.com/Lo4pca/NoobCTF/blob/main/%E7%AC%94%E8%AE%B0/Pwn/pwn.college.md>
+> - <https://github.com/CuB3y0nd/assembly.rip/tree/master/src/content/posts/write-ups>
 > - <https://lkliki.github.io/tags/PwnCollege/>
 > - <https://www.cubeyond.net/volume/1/>
 
