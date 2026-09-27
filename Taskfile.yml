@@ -26,7 +26,7 @@ tasks:
     desc: Sync workspace/home/hacker -> ~ on {{.DOJO_HOST}}
     cmds:
       - rsync -av -e "{{.RSYNC_SSH}}"
-        --exclude='__pycache__/' 
+        --exclude='__pycache__/'
         "{{.HACKER_SRC}}/" "{{.DOJO_HOST}}:./"
 
   init:
@@ -68,19 +68,25 @@ tasks:
         sh: 'cygpath -u -a "{{.destination}}"'
     cmds:
       - rsync -avzP -e "{{.RSYNC_SSH}}"
-        --exclude='libc.so.6'
+        --exclude='libc.so.6' --exclude='lib/'
         "{{.DOJO_HOST}}:/challenge/" "{{.RSYNC_DESTINATION}}"
 
   ida:
     desc: Download the challenge binary to a temporary directory and open it in IDA
     vars:
       TEMP_DIR:
-        sh: mktemp --tmpdir "$TEMP" -d
+        sh: mktemp --tmpdir "$TEMP" --directory --prefix 'pwn-college-'
     cmds:
       - task: pull
         vars:
           destination: "{{.TEMP_DIR}}"
-      - for file in $(find "{{.TEMP_DIR}}" -type f); do ida "$file"; break; done
+      - |
+        for file in "{{.TEMP_DIR}}"/*; do
+            if [ -f "$file" ]; then
+                ida "$file"
+                break
+            fi
+        done
 
   dojotool-pth:
     desc: Drop a .pth file so `import dojotool` resolves inside the uv venv

@@ -22,8 +22,10 @@ end
 define distance
     set $a = (unsigned long)$arg0
     set $b = (unsigned long)$arg1
-    set $dist = $a - $b
-    printf "0x%lx - 0x%lx = 0x%lx (%ld)\n", $a, $b, $dist, $dist
+    set $dist_a_b = $a - $b
+    set $dist_b_a = $b - $a
+    printf "0x%lx - 0x%lx = 0x%lx (%ld)\n", $a, $b, $dist_a_b, $dist_a_b
+    printf "0x%lx - 0x%lx = 0x%lx (%ld)\n", $b, $a, $dist_b_a, $dist_b_a
 end
 
 define psa
