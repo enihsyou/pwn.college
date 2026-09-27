@@ -64,10 +64,12 @@ tasks:
              task pull destination=/path/to/directory
     vars:
       destination: '{{default "./" .destination}}'
+      RSYNC_DESTINATION:
+        sh: 'cygpath -u -a "{{.destination}}"'
     cmds:
       - rsync -avzP -e "{{.RSYNC_SSH}}"
         --exclude='libc.so.6'
-        "{{.DOJO_HOST}}:/challenge/" "{{.destination}}"
+        "{{.DOJO_HOST}}:/challenge/" "{{.RSYNC_DESTINATION}}"
 
   ida:
     desc: Download the challenge binary to a temporary directory and open it in IDA
@@ -78,7 +80,7 @@ tasks:
       - task: pull
         vars:
           destination: "{{.TEMP_DIR}}"
-      - for file in $(find "{{.TEMP_DIR}}" -type f); do ida "$file"; done
+      - for file in $(find "{{.TEMP_DIR}}" -type f); do ida "$file"; break; done
 
   dojotool-pth:
     desc: Drop a .pth file so `import dojotool` resolves inside the uv venv
