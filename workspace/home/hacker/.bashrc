@@ -144,7 +144,8 @@ ghdecompile() {
 
 case ":$PATH:" in
   *":$HOME/.local/share/pwndbg/bin:"*) ;;
-  *) PATH="$PATH:$HOME/.local/share/pwndbg/bin" ;;
+  # Sometimes the runtime provides an older version of pwndbg, we choose our version.
+  *) PATH="$HOME/.local/share/pwndbg/bin:$PATH" ;;
 esac
 case ":$PATH:" in
   *":.:"*) ;;
