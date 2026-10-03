@@ -2,7 +2,7 @@ python
 import sys, gdb
 if "pwndbg" in sys.modules:
     gdb.execute("source ~/.local/share/pwndbg/pwndbg_tui.py")
-    gdb.execute("layout pwndbg_pwn")
+    # gdb.execute("layout pwndbg_pwn")
 else:
     gdb.execute("source /opt/gef/gef.py")
 end
