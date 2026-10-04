@@ -142,10 +142,16 @@ ghdecompile() {
         -postScript "$script_name" "$output"
 }
 
+function pwndbg() {
+    # /etc/profile.d/99-dojo-workspace.sh put theirs on the front (triggered by `. /etc/profile`)
+    # As a result, we must manually specify the full path.
+    "$HOME/.local/share/pwndbg/bin/pwndbg" "$@"
+}
+
 case ":$PATH:" in
   *":$HOME/.local/share/pwndbg/bin:"*) ;;
   # Sometimes the runtime provides an older version of pwndbg, we choose our version.
-  *) PATH="$HOME/.local/share/pwndbg/bin:$PATH" ;;
+  *) PATH="$PATH:$HOME/.local/share/pwndbg/bin" ;;
 esac
 case ":$PATH:" in
   *":.:"*) ;;
