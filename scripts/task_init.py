@@ -47,9 +47,7 @@ def ctf() -> None:
             one_round(io)
             wait = io.default
         finally:
-            data = io.recvrepeat(wait)
-    if submit(data):
-        return
+            submit(io.recvrepeat(wait))
 
 
 if __name__ == "__main__":
