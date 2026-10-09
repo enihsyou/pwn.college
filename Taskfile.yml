@@ -37,7 +37,20 @@ tasks:
     vars:
       extension: '{{default "py" .extension}}'
     cmds:
-      - uv run python scripts/task_init.py "{{.extension}}"
+      - uv run python -m scripts.task_init "{{.extension}}"
+
+  next:
+    desc: Start the next challenge and initialize its solution
+    summary: |
+      Usage: task next
+             task next extension=c
+    vars:
+      extension: '{{default "py" .extension}}'
+    cmds:
+      - uv run python -m scripts.task_next
+      - task: init
+        vars:
+          extension: "{{.extension}}"
 
   submit:
     desc: Run the solution for the running challenge
@@ -45,12 +58,12 @@ tasks:
       Usage: task submit                  # forwards --recursive by default
              task submit -- --upload-only # any extra dojo.py flag
     cmds:
-      - uv run python scripts/task_submit.py -r {{.CLI_ARGS}}
+      - uv run python -m scripts.task_submit -r {{.CLI_ARGS}}
 
   commit:
     desc: Commit changes for the running challenge
     cmds:
-      - uv run python scripts/task_commit.py
+      - uv run python -m scripts.task_commit
 
   test:
     desc: Run the task helper tests

@@ -3,10 +3,11 @@
 import subprocess
 from pathlib import Path
 
-import task_init
+from scripts import pwn_college_api as api
+from scripts import task_init
 
 
-def challenge_directory(metadata: task_init.ChallengeMetadata) -> Path:
+def challenge_directory(metadata: api.ChallengeMetadata) -> Path:
     """Return the repository-relative directory for a challenge."""
     return Path("challenges", metadata.dojo_id, metadata.module_id, metadata.challenge_id)
 
@@ -34,10 +35,10 @@ def replace_staging_area(challenge_dir: Path) -> bool:
 
 def main() -> int:
     try:
-        metadata = task_init.current_challenge_metadata()
+        metadata = api.current_challenge_metadata()
         challenge_dir = challenge_directory(metadata)
         if not (task_init.REPOSITORY_ROOT / challenge_dir).is_dir():
-            raise task_init.ApiError(
+            raise api.ApiError(
                 f"{challenge_dir.as_posix()} does not exist; run task init first"
             )
         if not replace_staging_area(challenge_dir):
@@ -48,7 +49,7 @@ def main() -> int:
 
         message = f"feat: {metadata.module_name} - {metadata.challenge_name}"
         return run_git("commit", "-m", message, check=False).returncode
-    except task_init.ApiError as error:
+    except api.ApiError as error:
         task_init.console.print(f"[bold red]Error:[/] {error}")
         return 1
     except subprocess.CalledProcessError as error:

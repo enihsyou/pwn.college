@@ -1,4 +1,3 @@
-import importlib.util
 import json
 import os
 import tempfile
@@ -7,12 +6,8 @@ from pathlib import Path
 from typing import ClassVar
 from unittest.mock import patch
 
-SCRIPT_PATH = Path(__file__).parents[1] / "scripts" / "task_init.py"
-SPEC = importlib.util.spec_from_file_location("task_init", SCRIPT_PATH)
-if SPEC is None or SPEC.loader is None:
-    raise RuntimeError(f"Could not load {SCRIPT_PATH}")
-task_init = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(task_init)
+from scripts import pwn_college_api as api
+from scripts import task_init
 
 
 def modules_payload(*challenge_ids: str) -> dict:
@@ -59,12 +54,12 @@ class FakeNotModifiedResponse:
 
 class TaskInitTests(unittest.TestCase):
     def test_json_accessor_reports_schema_path(self) -> None:
-        with self.assertRaises(task_init.ApiSchemaError) as raised:
-            task_init.JsonObject({"modules": []}, "modules response").string("success")
+        with self.assertRaises(api.ApiSchemaError) as raised:
+            api.JsonObject({"modules": []}, "modules response").string("success")
         self.assertIn("modules response.success", str(raised.exception))
 
     def test_exact_api_ids_resolve_names_and_confirmed_variant(self) -> None:
-        metadata = task_init.resolve_challenge_metadata(
+        metadata = api.resolve_challenge_metadata(
             {
                 "dojo": "system-security",
                 "module": "race-conditions",
@@ -90,8 +85,8 @@ class TaskInitTests(unittest.TestCase):
         self.assertEqual(metadata.challenge_id, "level-11-1")
 
     def test_id_matching_does_not_use_old_normalization(self) -> None:
-        with self.assertRaises(task_init.ApiError) as raised:
-            task_init.resolve_challenge_metadata(
+        with self.assertRaises(api.ApiError) as raised:
+            api.resolve_challenge_metadata(
                 {
                     "dojo": "system-security",
                     "module": "race-conditions",
@@ -102,7 +97,7 @@ class TaskInitTests(unittest.TestCase):
         self.assertIn("Challenge ID 'level11-1'", str(raised.exception))
 
     def test_create_solution_writes_provenance_header_and_template(self) -> None:
-        metadata = task_init.ChallengeMetadata(
+        metadata = api.ChallengeMetadata(
             "system-security",
             "race-conditions",
             "level-11-1",
@@ -131,7 +126,7 @@ class TaskInitTests(unittest.TestCase):
             self.assertIn("def ctf()", flag_file.read_text(encoding="utf-8"))
 
     def test_create_solution_c_uses_c_style_comments(self) -> None:
-        metadata = task_init.ChallengeMetadata(
+        metadata = api.ChallengeMetadata(
             "system-security",
             "speculative-execution",
             "level9",
@@ -160,7 +155,7 @@ class TaskInitTests(unittest.TestCase):
             self.assertNotIn("def ctf()", flag_file.read_text(encoding="utf-8"))
 
     def test_existing_solution_is_not_overwritten(self) -> None:
-        metadata = task_init.ChallengeMetadata(
+        metadata = api.ChallengeMetadata(
             "system-security",
             "race-conditions",
             "level-11-1",
@@ -198,9 +193,9 @@ class TaskInitTests(unittest.TestCase):
                 }
             )
 
-        api = task_init.PwnCollegeApi("secret-token", "https://example.invalid/api")
-        with patch.object(task_init, "urlopen", side_effect=fake_urlopen):
-            response = api.current_challenge()
+        client = api.PwnCollegeApi("secret-token", "https://example.invalid/api")
+        with patch.object(api, "urlopen", side_effect=fake_urlopen):
+            response = client.current_challenge()
 
         self.assertEqual(response["module"], "race-conditions")
         request, timeout = requests[0]
@@ -208,16 +203,16 @@ class TaskInitTests(unittest.TestCase):
         self.assertEqual(request.get_header("Authorization"), "Token secret-token")
         self.assertEqual(request.get_header("Content-type"), "application/json")
         self.assertEqual(request.get_header("Accept"), "application/json")
-        self.assertEqual(timeout, task_init.REQUEST_TIMEOUT_SECONDS)
+        self.assertEqual(timeout, api.REQUEST_TIMEOUT_SECONDS)
 
     def test_open_json_accepts_case_insensitive_conditional_header_304(self) -> None:
-        api = task_init.PwnCollegeApi("secret-token", "https://example.invalid/api")
+        client = api.PwnCollegeApi("secret-token", "https://example.invalid/api")
         with patch.object(
-            task_init,
+            api,
             "urlopen",
             return_value=FakeNotModifiedResponse(),
         ):
-            payload, headers = api._open_json(
+            payload, headers = client._open_json(
                 "/dojos/dojo-a/modules",
                 {"if-none-match": '"etag-a"'},
             )
@@ -228,20 +223,20 @@ class TaskInitTests(unittest.TestCase):
         payload = modules_payload("level-11-1")
         with (
             tempfile.TemporaryDirectory() as temporary_directory,
-            patch.object(task_init._module_cache, "directory", Path(temporary_directory)),
+            patch.object(api._module_cache, "directory", Path(temporary_directory)),
         ):
-            task_init.write_module_cache("dojo-a", payload, '"etag-a"')
-            task_init.write_module_cache("dojo-b", payload, '"etag-b"')
-            api = task_init.PwnCollegeApi("secret-token", "https://example.invalid/api")
+            api.write_module_cache("dojo-a", payload, '"etag-a"')
+            api.write_module_cache("dojo-b", payload, '"etag-b"')
+            client = api.PwnCollegeApi("secret-token", "https://example.invalid/api")
             with patch.object(
-                task_init,
+                api,
                 "urlopen",
                 side_effect=AssertionError("fresh cache should avoid network"),
             ):
-                self.assertEqual(api.modules("dojo-a"), payload)
+                self.assertEqual(client.modules("dojo-a"), payload)
             self.assertNotEqual(
-                task_init._module_cache.path_for("dojo-a"),
-                task_init._module_cache.path_for("dojo-b"),
+                api._module_cache.path_for("dojo-a"),
+                api._module_cache.path_for("dojo-b"),
             )
 
     def test_stale_module_cache_sends_etag_and_304_refreshes_age(self) -> None:
@@ -250,28 +245,28 @@ class TaskInitTests(unittest.TestCase):
 
         def fake_urlopen(request, timeout):
             requests.append((request, timeout))
-            raise task_init.HTTPError(request.full_url, 304, "Not Modified", {}, None)
+            raise api.HTTPError(request.full_url, 304, "Not Modified", {}, None)
 
         with (
             tempfile.TemporaryDirectory() as temporary_directory,
-            patch.object(task_init._module_cache, "directory", Path(temporary_directory)),
+            patch.object(api._module_cache, "directory", Path(temporary_directory)),
         ):
-            task_init.write_module_cache("dojo-a", payload, '"etag-a"')
-            cache_path = task_init._module_cache.path_for("dojo-a")
+            api.write_module_cache("dojo-a", payload, '"etag-a"')
+            cache_path = api._module_cache.path_for("dojo-a")
             old_timestamp = 1
             os.utime(cache_path, (old_timestamp, old_timestamp))
-            api = task_init.PwnCollegeApi("secret-token", "https://example.invalid/api")
-            with patch.object(task_init, "urlopen", side_effect=fake_urlopen):
-                self.assertEqual(api.modules("dojo-a"), payload)
+            client = api.PwnCollegeApi("secret-token", "https://example.invalid/api")
+            with patch.object(api, "urlopen", side_effect=fake_urlopen):
+                self.assertEqual(client.modules("dojo-a"), payload)
 
             request, timeout = requests[0]
             self.assertEqual(request.get_header("If-none-match"), '"etag-a"')
-            self.assertEqual(timeout, task_init.REQUEST_TIMEOUT_SECONDS)
+            self.assertEqual(timeout, api.REQUEST_TIMEOUT_SECONDS)
             self.assertGreater(cache_path.stat().st_mtime, old_timestamp)
 
     def test_missing_token_is_clear_without_value(self) -> None:
-        with self.assertRaises(task_init.ApiError) as raised:
-            task_init.read_access_token({})
+        with self.assertRaises(api.ApiError) as raised:
+            api.read_access_token({})
         self.assertIn("DOJO_ACCESS_TOKEN", str(raised.exception))
         self.assertNotIn("secret", str(raised.exception))
 

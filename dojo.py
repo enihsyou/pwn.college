@@ -2,10 +2,12 @@ import argparse
 import os
 import shlex
 import sys
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from threading import Event, Lock
+from queue import Empty, Queue
+from threading import Event, Lock, Thread
 
 import pwn
 from watchdog.events import FileModifiedEvent, FileSystemEvent, FileSystemEventHandler
@@ -16,6 +18,87 @@ ChangeSet = dict[Path, PurePosixPath]
 REMOTE_EXITED = object()
 REDEPLOY_REQUESTED = object()
 USER_STOPPED = object()
+NEXT_CHALLENGE_REQUESTED = object()
+
+
+@contextmanager
+def key_reader() -> Generator[Callable[[], str | None]]:
+    """Read console keys and restore POSIX terminal settings."""
+    if os.name == "nt":
+        import msvcrt
+
+        def read_key() -> str | None:
+            if not msvcrt.kbhit():
+                return None
+            key = msvcrt.getwch()
+            if key in ("\x00", "\xe0"):
+                msvcrt.getwch()
+                return None
+            return key
+
+        yield read_key
+    else:
+        import select
+        import termios
+        import tty
+
+        fd = sys.stdin.fileno()
+        settings = termios.tcgetattr(fd)
+
+        def read_key() -> str | None:
+            if select.select([fd], [], [], 0)[0]:
+                return os.read(fd, 1).decode(errors="ignore")
+            return None
+
+        try:
+            tty.setcbreak(fd)
+            yield read_key
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, settings)
+
+
+@contextmanager
+def keyboard_shortcuts(notified: Event) -> Generator[Callable[[], object | None]]:
+    """Collect shortcuts in a dedicated thread and wake the deployment loop."""
+    actions: Queue[object] = Queue()
+    stopped = Event()
+    bindings = {
+        "r": REDEPLOY_REQUESTED,
+        "q": USER_STOPPED,
+        "n": NEXT_CHALLENGE_REQUESTED,
+    }
+
+    def take_action() -> object | None:
+        try:
+            return actions.get_nowait()
+        except Empty:
+            return None
+
+    def listen(read_key: Callable[[], str | None]) -> None:
+        while not stopped.wait(0.5):
+            key = read_key()
+            if key:
+                action = bindings.get(key.lower())
+                if action is not None:
+                    actions.put(action)
+                    notified.set()
+
+    if not sys.stdin.isatty():
+        yield take_action
+        return
+
+    with key_reader() as read_key:
+        thread = Thread(target=listen, args=(read_key,), name="keyboard-shortcuts", daemon=True)
+        thread.start()
+        try:
+            yield take_action
+        finally:
+            stopped.set()
+            thread.join()
+
+
+def show_shortcut_help() -> None:
+    pwn.info("Shortcuts: R restart | Q quit | N next challenge")
 
 
 @dataclass(frozen=True)
@@ -120,9 +203,9 @@ class ChangeWatcher:
             self.notified.clear()
             return pending
 
-    def wait(self) -> None:
-        """Blocks until a change is detected."""
-        self.notified.wait()
+    def wait_pending(self, timeout: float | None = None) -> bool:
+        """Wait for a change or shortcut, optionally bounded by a timeout."""
+        return self.notified.wait(timeout) and self.has_pending()
 
 
 @contextmanager
@@ -312,6 +395,7 @@ def run_remote_until_change(
     ssh: pwn.ssh,
     args: Args,
     watcher: ChangeWatcher,
+    take_action: Callable[[], object | None],
 ) -> object:
     """Executes the remote command and monitors for local file changes."""
     argv = remote_command(args)
@@ -335,6 +419,10 @@ def run_remote_until_change(
                     pwn.info("Local change detected, kill and redeploying...")
                     interrupt_remote(ssh, io)
                     return REDEPLOY_REQUESTED
+                action = take_action()
+                if action is not None:
+                    interrupt_remote(ssh, io)
+                    return action
         except EOFError:
             return REMOTE_EXITED
         except KeyboardInterrupt:
@@ -342,12 +430,16 @@ def run_remote_until_change(
             return USER_STOPPED
 
 
-def wait_for_redeploy(watcher: ChangeWatcher) -> object:
-    """Wait for a local change when no remote process is active."""
+def wait_for_redeploy(watcher: ChangeWatcher, take_action: Callable[[], object | None]) -> object:
+    """Wait for either a file change or a keyboard action."""
     try:
-        watcher.wait()
-        pwn.info("Local change detected, redeploying...")
-        return REDEPLOY_REQUESTED
+        while True:
+            if watcher.wait_pending(timeout=3):
+                pwn.info("Local change detected, redeploying...")
+                return REDEPLOY_REQUESTED
+            action = take_action()
+            if action is not None:
+                return action
     except KeyboardInterrupt:
         return USER_STOPPED
 
@@ -358,7 +450,20 @@ def can_clear_screen() -> bool:
     return "PWNLIB_NOTERM" not in os.environ
 
 
-def deploy_loop(args: Args, watcher: ChangeWatcher) -> None:
+def next_challenge() -> None:
+    """Handles the transition to the next challenge."""
+    pwn.term.term.resetterm()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    command = ["task", "next"]
+    if os.name == "nt":
+        import subprocess
+
+        return subprocess.run(command, check=False)
+    os.execvp(command[0], command)
+
+
+def deploy_loop(args: Args, watcher: ChangeWatcher, take_action) -> None:
     """Orchestrates the continuous upload, execution, and redeploy cycle."""
     with pwn.ssh(**args.ssh_connection, raw=True) as ssh:
         upload_files = file_uploader(ssh, args)
@@ -377,13 +482,15 @@ def deploy_loop(args: Args, watcher: ChangeWatcher) -> None:
                 sys.stdout.flush()
                 result = REMOTE_EXITED
             else:
-                result = run_remote_until_change(ssh, args, watcher)
-                if result is USER_STOPPED:
-                    return
+                result = run_remote_until_change(ssh, args, watcher, take_action)
 
             if result is REMOTE_EXITED:
-                result = wait_for_redeploy(watcher)
+                show_shortcut_help()
+                result = wait_for_redeploy(watcher, take_action)
             if result is USER_STOPPED:
+                return
+            if result is NEXT_CHALLENGE_REQUESTED:
+                next_challenge()
                 return
             assert result is REDEPLOY_REQUESTED
 
@@ -395,8 +502,8 @@ def deploy_loop(args: Args, watcher: ChangeWatcher) -> None:
 
 def main() -> None:
     args = parse_args()
-    with watch_changes(args) as watcher:
-        deploy_loop(args, watcher)
+    with watch_changes(args) as watcher, keyboard_shortcuts(watcher.notified) as take_action:
+        deploy_loop(args, watcher, take_action)
 
 
 if __name__ == "__main__":

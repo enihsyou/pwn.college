@@ -9,7 +9,7 @@ from scripts import task_submit
 
 class TaskSubmitTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.metadata = task_submit.task_init.ChallengeMetadata(
+        self.metadata = task_submit.api.ChallengeMetadata(
             "system-security",
             "race-conditions",
             "level-11-1",
@@ -78,7 +78,7 @@ class TaskSubmitTests(unittest.TestCase):
             with (
                 patch.object(task_submit.task_init, "REPOSITORY_ROOT", repository_root),
                 patch.object(
-                    task_submit.task_init,
+                    task_submit.api,
                     "current_challenge_metadata",
                     return_value=self.metadata,
                 ),
@@ -117,7 +117,7 @@ class TaskSubmitTests(unittest.TestCase):
             with (
                 patch.object(task_submit.task_init, "REPOSITORY_ROOT", repository_root),
                 patch.object(
-                    task_submit.task_init,
+                    task_submit.api,
                     "current_challenge_metadata",
                     return_value=self.metadata,
                 ),

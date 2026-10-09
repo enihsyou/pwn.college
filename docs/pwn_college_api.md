@@ -1,6 +1,6 @@
-# pwn.college API 与 `task init`
+# pwn.college API 与 Task 任务
 
-本文记录 `scripts/task-init.py` 使用的 pwn.college 自定义 API。接口基址为：
+本文记录 `scripts/pwn_college_api.py` 封装的 pwn.college 自定义 API，供各 Task 脚本共用。接口基址为：
 
 ```text
 https://pwn.college/pwncollege_api/v1
@@ -9,20 +9,26 @@ https://pwn.college/pwncollege_api/v1
 脚本不调用 CTFd 的 `/api/v1`，也不再从 SSH 主机名或 GitHub Tree API 推断题目。
 模块列表响应可在本地系统临时目录短期缓存，但缓存只复用 API 的完整 JSON 响应。
 
+API 来源参考：
+
+- [官方 dojo CLI](https://github.com/pwncollege/dojo/blob/master/workspace/core/dojo-cli.py)
+- [官方 API v1 实现](https://github.com/pwncollege/dojo/blob/master/site/dojo/api/v1)
+
 ## 使用的接口
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
 | `GET` | `/docker` | 读取当前运行中的 `dojo`、`module`、`challenge` ID |
+| `GET` | `/docker/next` | 获取下一题；模块结束时尝试下一个模块的第一题 |
+| `POST` | `/docker` | 启动指定 challenge，替换当前 challenge 容器 |
 | `GET` | `/dojos/{dojo}/modules` | 读取指定 dojo 的模块及其 challenge 列表，并按 ID 获取名称 |
 
-相关但不参与 `task init` 的只读接口包括：
+其他可用的只读接口包括：
 
 | 路径 | 用途 |
 | --- | --- |
 | `/dojos` | 查询当前用户可见的 dojo |
 | `/dojos/{dojo}/{module}/{challenge}/description` | 查询题目描述（有可见性/锁定检查） |
-| `/docker/next` | 查询当前模块的下一题 |
 | `/users/me` | 查询当前登录用户，可用于单独确认 Token |
 | `/workspace` | 查询 Workspace 状态；不带 `service`、`port` 才是纯状态查询 |
 | `/dojos/{dojo}/solves` | 查询 dojo 解题记录 |
@@ -33,7 +39,7 @@ https://pwn.college/pwncollege_api/v1
 Token 只从环境变量 `DOJO_ACCESS_TOKEN` 读取。Taskfile 顶层通过 Task 的
 `dotenv` 机制加载 `.env`；直接运行脚本时先在当前进程导出该变量。
 
-每个 GET 请求都必须带以下三个请求头，`Content-Type` 必须是精确的
+每个请求都必须带以下三个请求头，`Content-Type` 必须是精确的
 `application/json`（不能省略，也不要追加 `charset`）：
 
 ```http
@@ -45,6 +51,32 @@ Accept: application/json
 这里使用 `Token` 而不是 `Bearer`。`Bearer` 在 pwn.college 侧保留给 SSH、Workspace
 等内部服务凭据。脚本不会把 Token 放入 URL、生成文件、普通错误信息或日志；API 返回的
 错误详情也会做长度限制和 Token 脱敏。
+
+## 使用 API 的 Task
+
+| Task | 脚本 | API 与用途 |
+| --- | --- | --- |
+| `task init` | `scripts/task_init.py` | 读取 `/docker` 和 `/dojos/{dojo}/modules`，按当前题目 ID 与名称初始化解题文件 |
+| `task next` | `scripts/task_next.py` | 读取 `/docker/next`，通过 `POST /docker` 启动下一题，然后调用 `task init` |
+| `task submit` | `scripts/task_submit.py` | 读取当前题目及模块信息，定位唯一的 `flag.py`、`flag.c` 或 `flag.sh`，交给 `dojo.py` 上传、运行并监控修改 |
+| `task commit` | `scripts/task_commit.py` | 读取当前题目及模块信息，将暂存区替换为该题目目录的改动，并用模块和题目名称生成提交信息 |
+
+这些脚本共用 `scripts/pwn_college_api.py` 的认证、响应校验、模块缓存和元数据解析。
+`task init` 默认创建 Python 文件，也支持 `extension=c` 和 `extension=sh`；已有文件不会覆盖。
+
+### 切换到下一题
+
+`task next` 先实时请求 `GET /docker/next`，再将返回的 `dojo`、`module`、`challenge`
+连同 `practice: false` 发送到 `POST /docker`。启动成功后，Task 调用现有 `task init`
+初始化解题文件；可用 `task next extension=c` 或 `extension=sh` 指定文件类型。
+
+需要已有正在运行的 challenge。下一题按课程顺序选择，不跳过已完成题目；没有下一题、
+题目锁定或启动失败时，任务报错并停止。启动成功但初始化失败时，下一题已经启动，
+可单独执行 `task init` 重试初始化。
+
+`task submit` 启动时显示快捷键帮助：`R` 重启远程进程，`Q` 正常退出，`N` 停止当前
+远程进程，清理 SSH 连接、文件监控与键盘线程后，由 `dojo.py` 直接 exec 到 `task next`。
+快捷键不区分大小写，在远程程序运行和等待文件修改期间均有效。
 
 ## 模块响应缓存
 
@@ -114,14 +146,6 @@ challenges/{dojo}/{module_id}/{challenge_id}/flag.{py|sh}
 
 URL 和目录名都使用 API 返回的精确 challenge ID。成对的 `-0`/`-1` challenge
 各自拥有独立目录，不再合并；若 `flag.{py|sh}` 已存在，脚本直接保留它，不覆盖内容。
-
-## Legacy 路径迁移
-
-一次性脚本 [`scripts/migrate_challenge_paths.py`](../scripts/migrate_challenge_paths.py)
-直接读取每个 `challenges/legacy/{dojo}` 的 modules API 响应，默认只输出迁移计划；
-确认计划后使用 `python scripts/migrate_challenge_paths.py --apply` 执行。它只移动目标
-不存在且能由精确 API ID、API 显示名或文件头 URL 唯一确认的目录；`-0`/`-1` 旧合并目录
-和其他冲突、无法映射项会原地保留并报告。
 
 ## 错误响应与排查
 

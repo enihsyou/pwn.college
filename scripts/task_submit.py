@@ -3,7 +3,8 @@
 import subprocess
 from pathlib import Path
 
-import task_init
+from scripts import pwn_college_api as api
+from scripts import task_init
 
 # File suffixes dojo.py knows how to deploy and run; keep in sync with
 # dojo.remote_command when new languages are added.
@@ -15,7 +16,7 @@ def solution_path(metadata) -> Path:
 
     The challenge directory may contain ``flag.py``, ``flag.c``, or ``flag.sh``;
     the script is not hard-coded. Raises
-    ``task_init.ApiError`` when the directory is missing, contains no
+    ``api.ApiError`` when the directory is missing, contains no
     recognised solution, or contains more than one candidate so the caller
     can surface a clear error instead of silently picking the wrong file.
     """
@@ -36,16 +37,16 @@ def solution_path(metadata) -> Path:
 
     listing = ", ".join(path.name for path in candidates) or "<none>"
     relative_dir = challenge_dir.relative_to(task_init.REPOSITORY_ROOT).as_posix()
-    raise task_init.ApiError(
+    raise api.ApiError(
         f"Cannot determine a unique solution in {relative_dir} (found: {listing}); expected exactly one flag.{{py,c,sh}}"
     )
 
 
 def main(extra_args: list[str]) -> int:
     try:
-        metadata = task_init.current_challenge_metadata()
+        metadata = api.current_challenge_metadata()
         script = solution_path(metadata)
-    except task_init.ApiError as error:
+    except api.ApiError as error:
         task_init.console.print(f"[bold red]Error:[/] {error}")
         return 1
 
