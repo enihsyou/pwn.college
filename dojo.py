@@ -1,6 +1,7 @@
 import argparse
 import os
 import shlex
+import subprocess
 import sys
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
@@ -19,6 +20,7 @@ REMOTE_EXITED = object()
 REDEPLOY_REQUESTED = object()
 USER_STOPPED = object()
 NEXT_CHALLENGE_REQUESTED = object()
+COMMIT_REQUESTED = object()
 
 
 @contextmanager
@@ -66,6 +68,7 @@ def keyboard_shortcuts(notified: Event) -> Generator[Callable[[], object | None]
         "r": REDEPLOY_REQUESTED,
         "q": USER_STOPPED,
         "n": NEXT_CHALLENGE_REQUESTED,
+        "c": COMMIT_REQUESTED,
     }
 
     def take_action() -> object | None:
@@ -98,7 +101,7 @@ def keyboard_shortcuts(notified: Event) -> Generator[Callable[[], object | None]
 
 
 def show_shortcut_help() -> None:
-    pwn.info("Shortcuts: R restart | Q quit | N next challenge")
+    pwn.info("Shortcuts: R restart | Q quit | N next challenge | C task commit")
 
 
 @dataclass(frozen=True)
@@ -450,17 +453,25 @@ def can_clear_screen() -> bool:
     return "PWNLIB_NOTERM" not in os.environ
 
 
-def next_challenge() -> None:
-    """Handles the transition to the next challenge."""
+def execve(command: list[str]) -> None:
+    """Restore the terminal and execute a command on Windows or POSIX."""
     pwn.term.term.resetterm()
     sys.stdout.flush()
     sys.stderr.flush()
-    command = ["task", "next"]
     if os.name == "nt":
-        import subprocess
+        subprocess.run(command, check=False)
+    else:
+        os.execvp(command[0], command)
 
-        return subprocess.run(command, check=False)
-    os.execvp(command[0], command)
+
+def next_challenge() -> None:
+    """Handles the transition to the next challenge."""
+    execve(["task", "next"])
+
+
+def commit_challenge() -> None:
+    """Commit the current challenge and leave the deployment loop."""
+    execve(["task", "commit"])
 
 
 def deploy_loop(args: Args, watcher: ChangeWatcher, take_action) -> None:
@@ -491,6 +502,9 @@ def deploy_loop(args: Args, watcher: ChangeWatcher, take_action) -> None:
                 return
             if result is NEXT_CHALLENGE_REQUESTED:
                 next_challenge()
+                return
+            if result is COMMIT_REQUESTED:
+                commit_challenge()
                 return
             assert result is REDEPLOY_REQUESTED
 
