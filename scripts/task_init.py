@@ -9,33 +9,6 @@ from scripts import pwn_college_api as api
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 
-# The Python template is intentionally small: challenge-specific interaction
-# belongs in one_round, while dojotool still handles the common I/O plumbing.
-PYTHON_TEMPLATE = """import pwn
-from dojotool import find_challenge, submit
-from dojotool.pwntool import tee
-
-
-def one_round(io: pwn.process): 
-    pass
-
-
-def ctf() -> None:
-    root_bin = find_challenge()
-    with pwn.process(root_bin, raw=True, level="error") as io:
-        tee(io)
-        wait = 1
-        try:
-            one_round(io)
-            wait = io.default
-        finally:
-            submit(io.recvrepeat(wait))
-
-
-if __name__ == "__main__":
-    ctf()
-"""
-
 console = Console()
 
 
@@ -54,14 +27,13 @@ def parse_args() -> argparse.Namespace:
 
 
 def render_solution(metadata: api.ChallengeMetadata, extension: str) -> str:
-    """Render the required two-line provenance header followed by the template."""
+    """Render the required two-line provenance header as the whole file."""
     comment = "//" if extension == "c" else "#"
-    header = (
+    return (
         f"{comment} {metadata.module_name} - {metadata.challenge_name}\n"
         f"{comment} https://pwn.college/{metadata.dojo_id}/{metadata.module_id}/"
         f"{metadata.challenge_id}\n\n"
     )
-    return header + (PYTHON_TEMPLATE if extension == "py" else "")
 
 
 def create_solution_file(

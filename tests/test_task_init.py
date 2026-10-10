@@ -96,7 +96,7 @@ class TaskInitTests(unittest.TestCase):
             )
         self.assertIn("Challenge ID 'level11-1'", str(raised.exception))
 
-    def test_create_solution_writes_provenance_header_and_template(self) -> None:
+    def test_create_solution_writes_only_provenance_header_for_python(self) -> None:
         metadata = api.ChallengeMetadata(
             "system-security",
             "race-conditions",
@@ -115,15 +115,13 @@ class TaskInitTests(unittest.TestCase):
                 / "level-11-1"
                 / "flag.py",
             )
-            lines = flag_file.read_text(encoding="utf-8").splitlines()
+            content = flag_file.read_text(encoding="utf-8")
             self.assertEqual(
-                lines[:2],
-                [
-                    "# Race Conditions - level11.1",
-                    "# https://pwn.college/system-security/race-conditions/level-11-1",
-                ],
+                content,
+                "# Race Conditions - level11.1\n"
+                "# https://pwn.college/system-security/race-conditions/level-11-1\n\n",
             )
-            self.assertIn("def ctf()", flag_file.read_text(encoding="utf-8"))
+            self.assertNotIn("def ctf()", content)
 
     def test_create_solution_c_uses_c_style_comments(self) -> None:
         metadata = api.ChallengeMetadata(
@@ -144,15 +142,13 @@ class TaskInitTests(unittest.TestCase):
                 / "level9"
                 / "flag.c",
             )
-            lines = flag_file.read_text(encoding="utf-8").splitlines()
+            content = flag_file.read_text(encoding="utf-8")
             self.assertEqual(
-                lines[:2],
-                [
-                    "// Microarchitecture Exploitation - Spooky Spectre 2",
-                    "// https://pwn.college/system-security/speculative-execution/level9",
-                ],
+                content,
+                "// Microarchitecture Exploitation - Spooky Spectre 2\n"
+                "// https://pwn.college/system-security/speculative-execution/level9\n\n",
             )
-            self.assertNotIn("def ctf()", flag_file.read_text(encoding="utf-8"))
+            self.assertNotIn("def ctf()", content)
 
     def test_existing_solution_is_not_overwritten(self) -> None:
         metadata = api.ChallengeMetadata(

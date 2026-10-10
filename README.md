@@ -23,12 +23,14 @@ The [workspace](workspace) directory stores home‑directory configuration files
 
 ## Running solution scripts
 
-After a challenge is started, `task init` initializes a local solution template
+After a challenge is started, `task init` initializes a local solution file
 from the running challenge. The task-init script queries the pwn.college API
 for the active dojo/module/challenge and then resolves the module and
 challenge names from that dojo's API module list. It writes under
 `challenges/{dojo}/{module_id}/{challenge_id}` using the exact API IDs and
-preserves existing files.
+preserves existing files. The generated file contains only the two-line
+provenance header (module/challenge title and URL as comments); the solution
+body is written by hand.
 `DOJO_ACCESS_TOKEN` is loaded from the ignored `.env` file; the same variable
 can also be exported when invoking `uv run python scripts/task_init.py`
 directly. `task submit` resolves the same active challenge and executes its
