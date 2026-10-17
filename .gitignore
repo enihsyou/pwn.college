@@ -6,6 +6,7 @@
 /*-level-[0-9]*
 /baby*
 /level[0-9]*
+/*.ko
 # IDA database
 /*.i64
 /*.id[0-2]
