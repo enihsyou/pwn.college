@@ -5,6 +5,7 @@ if "pwndbg" in sys.modules:
     # gdb.execute("layout pwndbg_pwn")
 else:
     gdb.execute("source /opt/gef/gef.py")
+    gdb.execute("source /opt/pt-dump/pt.py")
 end
 
 set disassembly-flavor intel
