@@ -78,7 +78,7 @@ tasks:
       MAX_SIZE: 3M
     cmds:
       - rsync -avzP -e "{{.RSYNC_SSH}}"
-        --exclude='libc.so.6' --exclude='.init' --exclude='lib/'
+        --exclude='libc.so.6' --exclude='.*' --exclude='lib/'
         --max-size={{.MAX_SIZE}} 
         "{{.DOJO_HOST}}:/challenge/" "{{.RSYNC_DESTINATION}}"
 
