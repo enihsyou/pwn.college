@@ -289,6 +289,11 @@ def parse_args() -> Args:
         default="hacker@dojo.pwn.college",
     )
     parser.add_argument(
+        "--identity",
+        type=Path,
+        help="SSH private key file",
+    )
+    parser.add_argument(
         "--upload-only",
         action="store_true",
         help="only upload files without executing",
@@ -317,6 +322,7 @@ def parse_args() -> Args:
         "user": user,
         "host": host,
         **({"port": int(port[0])} if port else {}),
+        **({"keyfile": str(namespace.identity.expanduser())} if namespace.identity else {}),
     }
 
     return Args(

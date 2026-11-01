@@ -1,0 +1,47 @@
+#!/bin/sh
+set -eu
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+mount -t devtmpfs devtmpfs /dev
+exec </dev/console >/dev/console 2>&1
+mkdir -p /dev/pts /dev/shm
+mount -t devpts -o mode=620,ptmxmode=666 devpts /dev/pts
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t tmpfs tmpfs /tmp
+mount -t tmpfs -o nosuid,nodev,noexec tmpfs /dev/shm
+ln -sf /proc/self/fd /dev/fd
+ln -sf /proc/self/fd/0 /dev/stdin
+ln -sf /proc/self/fd/1 /dev/stdout
+ln -sf /proc/self/fd/2 /dev/stderr
+hostname practice-vm
+chown -R 1000:1000 /home/hacker
+ip link set lo up
+ip addr add 10.0.2.15/24 dev eth0
+ip link set eth0 up
+ip route add default via 10.0.2.2
+for setting in protected_fifos=1 protected_hardlinks=1 protected_regular=2 protected_symlinks=1; do
+    sysctl -w "fs.$setting"
+done
+find /challenge -name '*.ko' | sort > /run/modules
+: > /run/module-names
+while IFS= read -r module; do
+    insmod "$module" || { echo "Failed to load $module"; exit 1; }
+    # insmod inserts at the head; the ELF's internal name may differ from its filename.
+    name=$(awk 'NR == 1 { print $1; exit }' /proc/modules)
+    printf '%s\t%s\n' "$module" "$name" >> /run/module-names
+done < /run/modules
+if [ -f /challenge/.initvm ]; then
+    . /challenge/.initvm
+fi
+# Export actual addresses before the unprivileged user can change kallsyms visibility.
+awk '$3 == "_text" { print "kernel 0x" $1; exit }' /proc/kallsyms > /dev/ttyS1
+while IFS="$(printf '\t')" read -r module name; do
+    for section in /sys/module/"$name"/sections/.* /sys/module/"$name"/sections/*; do
+        [ -f "$section" ] || continue
+        printf 'module\t%s\t%s\t%s\n' "${module#/challenge/}" "${section##*/}" "$(cat "$section")" > /dev/ttyS1
+    done
+done < /run/module-names
+echo ready > /dev/ttyS1
+/usr/sbin/dropbear -s -w -E -r /etc/dropbear/dropbear_ed25519_host_key -p 22
+echo 'Practice VM ready; SSH user hacker (UID 1000).'
+while :; do sleep 3600; done

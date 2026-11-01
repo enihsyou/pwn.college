@@ -64,7 +64,7 @@ tasks:
   test:
     desc: Run the task helper tests
     cmds:
-      - uv run python -m unittest discover tests
+      - uv run python -m unittest discover --buffer tests
 
   pull:
     desc: Download challenge file to local
