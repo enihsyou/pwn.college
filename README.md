@@ -2,12 +2,12 @@
 
 My attempts to the [pwn.college challenges](https://pwn.college/dojos), these write‑ups serves as a memo documenting my thought process for solving challenge problems, sometimes including a PoC.
 
-The directory structure of the challenges keeps sync with [pwncollege/challenges](https://github.com/pwncollege/challenges). Some challenge directories are renamed from their original `level-*` names to the actual binary name for easier identification.
+The directory structure of the challenges keeps sync with [pwncollege/challenges](https://github.com/pwncollege/challenges). More precisely, it follows the dojo, module, and challenge IDs in each challenge's URL. Some challenge directories are renamed from their original `level-*` names to the actual binary name for easier identification.
 
 > [!IMPORTANT]
-> Spoiler alert! Think before continue exploring. This repository documents my attempts and thought process rather than providing reference answers. You may get more out of it by trying to solve the challenges on your own first. Combined with AI, your own insights will yield much better results.
+> Spoiler alert! This repository documents my own exploration of the challenges. These solutions are not meant to be copied or used as references. Without thinking through the challenges and attempting them yourself first, you won't understand why the code is written this way. I share this work because I believe in open knowledge, including the sharing of techniques for exploiting vulnerabilities.
 >
-> You might be more interested in these writeups:
+> You might also be interested in these write-ups:
 >
 > - <https://writeups.kunull.net/pwn-college>
 > - <https://github.com/Lo4pca/NoobCTF/blob/main/%E7%AC%94%E8%AE%B0/Pwn/pwn.college.md>
